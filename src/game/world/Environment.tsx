@@ -1,1061 +1,219 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { Box, Cylinder, Icosahedron, Line, Sphere } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { Box, Cone, Cylinder, Icosahedron, Line, Torus } from '@react-three/drei'
+import { useFrame, useLoader } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { LevelConfig } from '../levels/level.config'
 
-const vietnamStarShape = (() => {
-  const shape = new THREE.Shape()
-  for (let index = 0; index < 10; index += 1) {
-    const angle = -Math.PI / 2 + index * Math.PI / 5
-    const radius = index % 2 === 0 ? 0.13 : 0.055
-    const x = Math.cos(angle) * radius
-    const y = Math.sin(angle) * radius
-    if (index === 0) shape.moveTo(x, y)
-    else shape.lineTo(x, y)
-  }
-  shape.closePath()
-  return shape
-})()
+const ROOT = '/assets/environment/'
+const ART = {
+  pho: `${ROOT}signage/pho-minh-tam.svg`,
+  menu: `${ROOT}signage/pho-menu.svg`,
+  barber: `${ROOT}signage/nhan-barber.svg`,
+  services: `${ROOT}signage/barber-services.svg`,
+  repair: `${ROOT}signage/sua-xe-may.svg`,
+  grocery: `${ROOT}signage/tap-hoa-minh-an.svg`,
+  tea: `${ROOT}signage/tea-cart.svg`,
+  products: `${ROOT}packaging/grocery-products-atlas.svg`,
+  snacks: `${ROOT}packaging/snacks-atlas.svg`,
+  tile: `${ROOT}surfaces/ceramic-tile.svg`,
+  shutter: `${ROOT}surfaces/metal-shutter.svg`,
+  wear: `${ROOT}surfaces/wall-wear.svg`,
+} as const
 
-type SignBoardProps = {
-  label: string
-  color: string
-  position: [number, number, number]
-  width?: number
+type Vec3 = [number, number, number]
+type BusinessType = 'pho' | 'barber' | 'repair' | 'grocery' | 'tea' | 'home' | 'cafe'
+
+const SIZES: Record<BusinessType, { width: number; height: number; depth: number }> = {
+  pho: { width: 7.2, height: 6.55, depth: 5.4 },
+  barber: { width: 4.65, height: 5.9, depth: 4.9 },
+  repair: { width: 5.35, height: 5.75, depth: 5.25 },
+  grocery: { width: 5.45, height: 6.05, depth: 5.1 },
+  tea: { width: 4.65, height: 5.75, depth: 4.7 },
+  home: { width: 5, height: 5.95, depth: 4.8 },
+  cafe: { width: 5.1, height: 6.15, depth: 5 },
 }
 
-function SignBoard({ label, color, position, width = 2.65 }: SignBoardProps) {
+function srgb(texture: THREE.Texture) {
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.anisotropy = 4
+  texture.needsUpdate = true
+}
+
+function ImagePlane({ src, width, height, position, rotation = [0, Math.PI, 0], opacity = 1 }: { src: string; width: number; height: number; position: Vec3; rotation?: Vec3; opacity?: number }) {
+  const texture = useLoader(THREE.TextureLoader, src)
+  useEffect(() => srgb(texture), [texture])
+  return (
+    <mesh position={position} rotation={rotation}>
+      <planeGeometry args={[width, height]} />
+      <meshBasicMaterial map={texture} toneMapped={false} transparent={opacity < 1} opacity={opacity} side={THREE.DoubleSide} />
+    </mesh>
+  )
+}
+
+function TexturedBox({ src, args, position, color = '#a6a79a' }: { src: string; args: [number, number, number]; position: Vec3; color?: string }) {
+  const texture = useLoader(THREE.TextureLoader, src)
+  useEffect(() => srgb(texture), [texture])
+  return <Box args={args} position={position}><meshStandardMaterial map={texture} color={color} roughness={0.9} /></Box>
+}
+
+function AtlasTile({ src, columns, width, height, position, column, row }: { src: string; columns: number; width: number; height: number; position: Vec3; column: number; row: number }) {
+  const source = useLoader(THREE.TextureLoader, src)
   const texture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 512
-    canvas.height = 112
-    const context = canvas.getContext('2d')
-    if (context) {
-      context.clearRect(0, 0, canvas.width, canvas.height)
-      context.fillStyle = '#182a2c'
-      context.font = `${label.length > 9 ? 700 : 800} ${label.length > 9 ? 38 : 50}px Arial, sans-serif`
-      context.textAlign = 'center'
-      context.textBaseline = 'middle'
-      context.fillText(label, canvas.width / 2, canvas.height / 2 + 2)
-    }
-    const nextTexture = new THREE.CanvasTexture(canvas)
-    nextTexture.colorSpace = THREE.SRGBColorSpace
-    return nextTexture
-  }, [label])
-
-  useEffect(() => () => texture.dispose(), [texture])
-
-  return (
-    <group position={position}>
-      <Box args={[width, 0.62, 0.1]}>
-        <meshStandardMaterial color={color} roughness={0.78} />
-      </Box>
-      <mesh position={[0, 0, -0.056]} rotation={[0, Math.PI, 0]}>
-        <planeGeometry args={[width - 0.16, 0.48]} />
-        <meshBasicMaterial map={texture} transparent toneMapped={false} />
-      </mesh>
-    </group>
-  )
+    const next = source.clone()
+    next.wrapS = THREE.ClampToEdgeWrapping
+    next.wrapT = THREE.ClampToEdgeWrapping
+    next.repeat.set(1 / columns, 0.5)
+    next.offset.set(column / columns, row === 0 ? 0.5 : 0)
+    srgb(next)
+    return next
+  }, [source, columns, column, row])
+  return <mesh position={position} rotation={[0, Math.PI, 0]}><planeGeometry args={[width, height]} /><meshBasicMaterial map={texture} toneMapped={false} /></mesh>
 }
 
-function HeroSign({ facadeZ, width }: { facadeZ: number; width: number }) {
-  const texture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 1200
-    canvas.height = 300
-    const context = canvas.getContext('2d')
-    if (context) {
-      context.fillStyle = '#e7b93e'
-      context.fillRect(0, 0, canvas.width, canvas.height)
-      context.fillStyle = '#f4d86b'
-      context.fillRect(16, 16, canvas.width - 32, canvas.height - 32)
-      context.strokeStyle = '#a97824'
-      context.lineWidth = 12
-      context.strokeRect(10, 10, canvas.width - 20, canvas.height - 20)
-      context.textBaseline = 'middle'
-      context.textAlign = 'left'
-      context.font = '800 178px Arial, sans-serif'
-      context.fillStyle = '#c33150'
-      context.fillText('PHỞ', 56, 168)
-      context.font = '800 102px Arial, sans-serif'
-      context.fillStyle = '#163f9b'
-      context.fillText('BÚN BÒ', 492, 105)
-      context.font = '700 48px Arial, sans-serif'
-      context.fillStyle = '#287d78'
-      context.fillText('NƯỚC DÙNG NHÀ NẤU', 498, 171)
-      context.font = '700 37px Arial, sans-serif'
-      context.fillStyle = '#76502d'
-      context.fillText('QUÁN ĂN SÁNG • TRƯA', 498, 235)
-      context.fillStyle = '#c33150'
-      context.beginPath()
-      context.moveTo(445, 86)
-      context.lineTo(470, 105)
-      context.lineTo(445, 124)
-      context.closePath()
-      context.fill()
-    }
-    const nextTexture = new THREE.CanvasTexture(canvas)
-    nextTexture.colorSpace = THREE.SRGBColorSpace
-    return nextTexture
-  }, [])
-
-  useEffect(() => () => texture.dispose(), [texture])
-
-  return (
-    <group>
-      <Box args={[width + 0.3, 2.05, 0.22]} position={[0, 6.28, facadeZ - 0.04]} castShadow>
-        <meshStandardMaterial color="#d69f2d" roughness={0.7} />
-      </Box>
-      <Box args={[width + 0.36, 0.14, 0.3]} position={[0, 7.29, facadeZ - 0.04]}>
-        <meshStandardMaterial color="#7c5a32" roughness={0.78} metalness={0.1} />
-      </Box>
-      <Box args={[width + 0.36, 0.14, 0.3]} position={[0, 5.27, facadeZ - 0.04]}>
-        <meshStandardMaterial color="#7c5a32" roughness={0.78} metalness={0.1} />
-      </Box>
-      <Box args={[0.14, 2.05, 0.3]} position={[-width / 2, 6.28, facadeZ - 0.04]}>
-        <meshStandardMaterial color="#7c5a32" roughness={0.78} metalness={0.1} />
-      </Box>
-      <Box args={[0.14, 2.05, 0.3]} position={[width / 2, 6.28, facadeZ - 0.04]}>
-        <meshStandardMaterial color="#7c5a32" roughness={0.78} metalness={0.1} />
-      </Box>
-      <mesh position={[0, 6.28, facadeZ - 0.17]} rotation={[0, Math.PI, 0]}>
-        <planeGeometry args={[width - 0.22, 1.82]} />
-        <meshBasicMaterial map={texture} toneMapped={false} />
-      </mesh>
-    </group>
-  )
+function Sign({ src, width, height, y, facadeZ, frame = '#303b3a' }: { src: string; width: number; height: number; y: number; facadeZ: number; frame?: string }) {
+  return <group><Box args={[width + 0.16, height + 0.16, 0.18]} position={[0, y, facadeZ - 0.02]} castShadow><meshStandardMaterial color={frame} roughness={0.72} metalness={0.12} /></Box><ImagePlane src={src} width={width} height={height} position={[0, y, facadeZ - 0.125]} /></group>
 }
 
-function MenuBoard({
-  position,
-  width = 2.1,
-  height = 1.25,
-  title = 'THỰC ĐƠN',
-  accent = '#ca5b43',
-}: {
-  position: [number, number, number]
-  width?: number
-  height?: number
-  title?: string
-  accent?: string
-}) {
-  const texture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 520
-    canvas.height = 320
-    const context = canvas.getContext('2d')
-    if (context) {
-      context.fillStyle = '#f0d789'
-      context.fillRect(0, 0, canvas.width, canvas.height)
-      context.fillStyle = accent
-      context.fillRect(0, 0, canvas.width, 52)
-      context.textAlign = 'center'
-      context.textBaseline = 'middle'
-      context.font = '800 34px Arial, sans-serif'
-      context.fillStyle = '#fff8d7'
-      context.fillText(title, canvas.width / 2, 26)
-      context.textAlign = 'left'
-      context.font = '700 27px Arial, sans-serif'
-      context.fillStyle = '#30453d'
-      ;['PHỞ BÒ', 'BÚN BÒ', 'TRÀ ĐÁ', 'CƠM • MÌ'].forEach((line, index) => {
-        context.fillText(line, 28, 93 + index * 52)
-        context.textAlign = 'right'
-        context.fillText(index === 0 ? '45K' : index === 1 ? '50K' : index === 2 ? '5K' : '35K', canvas.width - 24, 93 + index * 52)
-        context.textAlign = 'left'
-      })
-    }
-    const nextTexture = new THREE.CanvasTexture(canvas)
-    nextTexture.colorSpace = THREE.SRGBColorSpace
-    return nextTexture
-  }, [accent, title])
-
-  useEffect(() => () => texture.dispose(), [texture])
-
-  return (
-    <group position={position}>
-      <Box args={[width, height, 0.12]} castShadow>
-        <meshStandardMaterial color="#6a4435" roughness={0.88} />
-      </Box>
-      <mesh position={[0, 0, -0.071]} rotation={[0, Math.PI, 0]}>
-        <planeGeometry args={[width - 0.12, height - 0.12]} />
-        <meshBasicMaterial map={texture} toneMapped={false} />
-      </mesh>
-    </group>
-  )
+function Poster({ src, width, height, position }: { src: string; width: number; height: number; position: Vec3 }) {
+  return <group position={position}><Box args={[width + 0.08, height + 0.08, 0.05]} position={[0, 0, 0.02]}><meshStandardMaterial color="#504940" roughness={0.8} /></Box><ImagePlane src={src} width={width} height={height} position={[0, 0, -0.02]} /></group>
 }
 
-type BoxInstance = {
-  position: [number, number, number]
-  scale: [number, number, number]
-  rotation?: number
+function UpperWindow({ x, y, facadeZ, variant }: { x: number; y: number; facadeZ: number; variant: number }) {
+  const frame = variant % 2 ? '#3d4f4e' : '#5e5f58'
+  return <group position={[x, y, facadeZ - 0.04]}><Box args={[1.12, 1.22, 0.08]}><meshStandardMaterial color={['#78a8ab', '#9eb5af', '#668d98'][variant % 3]} roughness={0.34} metalness={0.06} /></Box><Box args={[1.2, 0.07, 0.12]} position={[0, -0.67, -0.05]}><meshStandardMaterial color={frame} roughness={0.8} /></Box><Box args={[0.07, 1.22, 0.12]} position={[-0.02, 0, -0.05]}><meshStandardMaterial color={frame} roughness={0.8} /></Box>{variant % 2 === 1 && <Box args={[1.14, 0.07, 0.12]} position={[0, 0.05, -0.05]}><meshStandardMaterial color={frame} roughness={0.8} /></Box>}</group>
 }
 
-function InstancedBoxSet({
-  instances,
-  color,
-  castShadow = true,
-  receiveShadow = true,
-}: {
-  instances: BoxInstance[]
-  color: string
-  castShadow?: boolean
-  receiveShadow?: boolean
-}) {
-  const mesh = useRef<THREE.InstancedMesh>(null)
-
-  useLayoutEffect(() => {
-    if (!mesh.current) return
-    const matrix = new THREE.Matrix4()
-    const position = new THREE.Vector3()
-    const scale = new THREE.Vector3()
-    const quaternion = new THREE.Quaternion()
-    instances.forEach((instance, index) => {
-      position.set(...instance.position)
-      scale.set(...instance.scale)
-      quaternion.setFromEuler(new THREE.Euler(0, instance.rotation ?? 0, 0))
-      matrix.compose(position, quaternion, scale)
-      mesh.current?.setMatrixAt(index, matrix)
-    })
-    mesh.current.instanceMatrix.needsUpdate = true
-  }, [instances])
-
-  return (
-    <instancedMesh ref={mesh} args={[undefined, undefined, instances.length]} castShadow={castShadow} receiveShadow={receiveShadow}>
-      <boxGeometry args={[1, 1, 1]} />
-      <meshStandardMaterial color={color} roughness={0.88} />
-    </instancedMesh>
-  )
+function AC({ x, y, facadeZ, variant }: { x: number; y: number; facadeZ: number; variant: number }) {
+  return <group position={[x, y, facadeZ - 0.14]}><Box args={[0.78, 0.46, 0.24]}><meshStandardMaterial color={variant % 2 ? '#a7b3ad' : '#d6d0be'} roughness={0.78} /></Box>{[-0.22, -0.08, 0.08, 0.22].map((offset) => <Box key={offset} args={[0.035, 0.22, 0.025]} position={[offset, 0, -0.14]}><meshStandardMaterial color="#56615e" roughness={0.8} metalness={0.14} /></Box>)}<Box args={[0.92, 0.06, 0.33]} position={[0, -0.28, 0.08]}><meshStandardMaterial color="#4f5b58" roughness={0.85} metalness={0.14} /></Box></group>
 }
 
-const heroTableLayouts = [
-  { x: -3.35, z: -1.55, rotation: -0.12 },
-  { x: -1.15, z: -1.68, rotation: 0.18 },
-  { x: 1.2, z: -1.58, rotation: -0.18 },
-  { x: 3.28, z: -1.42, rotation: 0.12 },
-  { x: -3.1, z: -0.05, rotation: 0.14 },
-  { x: -0.95, z: 0.02, rotation: -0.12 },
-  { x: 1.25, z: 0.08, rotation: 0.12 },
-  { x: 3.15, z: 0.18, rotation: -0.18 },
-  { x: -2.45, z: 1.38, rotation: -0.16 },
-  { x: 0.05, z: 1.42, rotation: 0.12 },
-  { x: 2.5, z: 1.35, rotation: -0.1 },
-]
-
-function HeroRestaurantFurniture() {
-  const furniture = useMemo(() => {
-    const tableTops: BoxInstance[] = []
-    const tableLegs: BoxInstance[] = []
-    const chairSeats: BoxInstance[] = []
-    const chairBacks: BoxInstance[] = []
-    heroTableLayouts.forEach(({ x, z, rotation }) => {
-      tableTops.push({ position: [x, 0.78, z], scale: [1.2, 0.12, 0.76], rotation })
-      ;[
-        [-0.43, -0.25],
-        [0.43, -0.25],
-        [-0.43, 0.25],
-        [0.43, 0.25],
-      ].forEach(([legX, legZ]) => {
-        const cos = Math.cos(rotation)
-        const sin = Math.sin(rotation)
-        tableLegs.push({
-          position: [x + legX * cos - legZ * sin, 0.39, z + legX * sin + legZ * cos],
-          scale: [0.08, 0.72, 0.08],
-          rotation,
-        })
-      })
-      ;[0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2].forEach((angle) => {
-        const distanceX = Math.cos(angle) * 0.8
-        const distanceZ = Math.sin(angle) * 0.62
-        chairSeats.push({ position: [x + distanceX, 0.53, z + distanceZ], scale: [0.4, 0.08, 0.4], rotation: angle })
-        chairBacks.push({ position: [x + distanceX - Math.sin(angle) * 0.18, 0.88, z + distanceZ + Math.cos(angle) * 0.18], scale: [0.4, 0.58, 0.08], rotation: angle })
-      })
-    })
-    return { tableTops, tableLegs, chairSeats, chairBacks }
-  }, [])
-
-  return (
-    <>
-      <InstancedBoxSet instances={furniture.tableTops} color="#8d6249" />
-      <InstancedBoxSet instances={furniture.tableLegs} color="#53615e" />
-      <InstancedBoxSet instances={furniture.chairSeats} color="#b75c42" />
-      <InstancedBoxSet instances={furniture.chairBacks} color="#a94f3d" />
-      {heroTableLayouts.filter((_, index) => index % 2 === 0).map(({ x, z }) => (
-        <group key={`condiments-${x}-${z}`} position={[x, 0.91, z]}>
-          <Cylinder args={[0.065, 0.07, 0.14, 8]} position={[-0.14, 0, 0]}>
-            <meshStandardMaterial color="#d3483f" roughness={0.75} />
-          </Cylinder>
-          <Cylinder args={[0.06, 0.065, 0.14, 8]} position={[0.02, 0, 0]}>
-            <meshStandardMaterial color="#e2d6a3" roughness={0.78} />
-          </Cylinder>
-          <Box args={[0.22, 0.035, 0.14]} position={[0.17, 0, 0]}>
-            <meshStandardMaterial color="#4e7471" roughness={0.82} />
-          </Box>
-        </group>
-      ))}
-    </>
-  )
+function Balcony({ width, facadeZ, y, variant }: { width: number; facadeZ: number; y: number; variant: number }) {
+  const railWidth = Math.min(width - 0.5, 3.8)
+  const rail = variant % 2 ? '#7e604e' : '#465957'
+  return <group position={[0, y, facadeZ - 0.28]}><Box args={[railWidth, 0.14, 0.9]} position={[0, 0, -0.22]}><meshStandardMaterial color="#b4a891" roughness={0.9} /></Box><Box args={[railWidth, 0.07, 0.07]} position={[0, 0.64, -0.68]}><meshStandardMaterial color={rail} roughness={0.72} metalness={0.15} /></Box>{Array.from({ length: 7 }, (_, index) => <Box key={index} args={[0.055, 0.68, 0.055]} position={[-railWidth / 2 + 0.22 + index * 0.54, 0.32, -0.68]}><meshStandardMaterial color={rail} roughness={0.72} metalness={0.15} /></Box>)}<Cylinder args={[0.16, 0.18, 0.22, 8]} position={[-0.9, 0.16, -0.42]}><meshStandardMaterial color="#ae6b4b" roughness={0.9} /></Cylinder><Icosahedron args={[0.26, 1]} position={[-0.9, 0.43, -0.42]}><meshStandardMaterial color="#4a7a5b" roughness={1} flatShading /></Icosahedron></group>
 }
 
-function CeilingFan({ position }: { position: [number, number, number] }) {
-  return (
-    <group position={position}>
-      <Cylinder args={[0.07, 0.07, 0.24, 8]} rotation={[Math.PI / 2, 0, 0]}>
-        <meshStandardMaterial color="#5d6863" roughness={0.82} metalness={0.16} />
-      </Cylinder>
-      {[0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2].map((rotation) => (
-        <Box key={rotation} args={[0.72, 0.035, 0.1]} rotation={[0, rotation, 0]} position={[0, -0.12, 0]}>
-          <meshStandardMaterial color="#77847a" roughness={0.88} />
-        </Box>
-      ))}
-    </group>
-  )
+function ClothesRack({ x, y, facadeZ }: { x: number; y: number; facadeZ: number }) {
+  return <group position={[x, y, facadeZ - 0.11]}><Cylinder args={[0.035, 0.035, 1.25, 6]} rotation={[0, 0, Math.PI / 2]} position={[0, 0.62, 0]}><meshStandardMaterial color="#596762" roughness={0.72} metalness={0.25} /></Cylinder>{[-0.38, -0.13, 0.16, 0.4].map((offset, index) => <Box key={offset} args={[0.21, 0.68 + index * 0.05, 0.05]} position={[offset, 0.28, -0.01]}><meshStandardMaterial color={['#b74a3c', '#d3ad42', '#547e72', '#5c6e92'][index]} roughness={0.92} /></Box>)}</group>
 }
 
-function HeroPhoRestaurant({ x, z }: { x: number; z: number }) {
-  const width = 9.6
-  const depth = 4.9
-  const height = 7.45
-  const facadeZ = -depth / 2 - 0.04
-
-  return (
-    <group position={[x, 0, z]}>
-      <Box args={[width, 4.25, depth]} position={[0, 5.25, 0]} castShadow receiveShadow>
-        <meshStandardMaterial color="#d5c69a" roughness={0.9} />
-      </Box>
-      <Box args={[width + 0.22, 0.24, depth + 0.18]} position={[0, height, 0]} castShadow>
-        <meshStandardMaterial color="#47716c" roughness={0.82} />
-      </Box>
-      <Box args={[width + 0.38, 0.18, 0.7]} position={[0, 3.05, facadeZ - 0.2]} castShadow>
-        <meshStandardMaterial color="#4e5e58" roughness={0.8} metalness={0.08} />
-      </Box>
-      <Box args={[width + 0.26, 0.14, 0.48]} position={[0, 2.82, facadeZ - 0.13]}>
-        <meshStandardMaterial color="#bb7550" roughness={0.82} />
-      </Box>
-
-      <Box args={[0.34, 3.02, 0.36]} position={[-width / 2 + 0.22, 1.54, facadeZ]} castShadow>
-        <meshStandardMaterial color="#e0d0a3" roughness={0.88} />
-      </Box>
-      <Box args={[0.34, 3.02, 0.36]} position={[width / 2 - 0.22, 1.54, facadeZ]} castShadow>
-        <meshStandardMaterial color="#e0d0a3" roughness={0.88} />
-      </Box>
-      <Box args={[0.3, 2.72, depth - 0.2]} position={[-width / 2 + 0.18, 1.36, 0]}>
-        <meshStandardMaterial color="#b6aa82" roughness={0.92} />
-      </Box>
-      <Box args={[0.3, 2.72, depth - 0.2]} position={[width / 2 - 0.18, 1.36, 0]}>
-        <meshStandardMaterial color="#b6aa82" roughness={0.92} />
-      </Box>
-
-      <Box args={[width - 0.55, 0.12, depth - 0.38]} position={[0, 0.12, 0]} receiveShadow>
-        <meshStandardMaterial color="#d5d0b9" roughness={0.82} />
-      </Box>
-      {[-3.6, -1.8, 0, 1.8, 3.6].map((tileX) => (
-        <Box key={`floor-seam-x-${tileX}`} args={[0.025, 0.015, depth - 0.55]} position={[tileX, 0.19, 0]}>
-          <meshStandardMaterial color="#b9b7a6" roughness={0.92} />
-        </Box>
-      ))}
-      {[-1.45, 0, 1.45].map((tileZ) => (
-        <Box key={`floor-seam-z-${tileZ}`} args={[width - 0.9, 0.015, 0.025]} position={[0, 0.19, tileZ]}>
-          <meshStandardMaterial color="#b9b7a6" roughness={0.92} />
-        </Box>
-      ))}
-      <Box args={[width - 0.35, 0.08, 0.26]} position={[0, 0.22, facadeZ - 0.12]}>
-        <meshStandardMaterial color="#7a7767" roughness={0.9} />
-      </Box>
-      <Box args={[width - 0.65, 2.4, 0.18]} position={[0, 1.2, depth / 2 - 0.22]}>
-        <meshStandardMaterial color="#756d57" roughness={0.9} />
-      </Box>
-      <Box args={[width - 1.0, 0.64, 0.52]} position={[0, 0.52, depth / 2 - 0.56]}>
-        <meshStandardMaterial color="#5b625b" roughness={0.78} metalness={0.12} />
-      </Box>
-      <Cylinder args={[0.42, 0.48, 0.42, 10]} position={[-2.95, 0.75, depth / 2 - 0.65]}>
-        <meshStandardMaterial color="#a7a99a" roughness={0.72} metalness={0.16} />
-      </Cylinder>
-      <Cylinder args={[0.32, 0.36, 0.32, 10]} position={[-2.25, 0.72, depth / 2 - 0.64]}>
-        <meshStandardMaterial color="#c9b36e" roughness={0.76} />
-      </Cylinder>
-
-      <HeroSign facadeZ={facadeZ} width={width} />
-      <MenuBoard position={[-3.0, 1.85, depth / 2 - 0.34]} width={2.1} height={1.3} />
-      <MenuBoard position={[0.05, 2.0, depth / 2 - 0.34]} width={2.25} height={1.38} title="MÓN NGON" accent="#3c6d67" />
-      <MenuBoard position={[3.25, 1.6, facadeZ - 0.1]} width={1.5} height={1.65} title="GIÁ" accent="#ba5544" />
-
-      <HeroRestaurantFurniture />
-      {[-2.5, 0, 2.5].map((lightX) => (
-        <group key={`shop-light-${lightX}`} position={[lightX, 2.82, 0.45]}>
-          <Cylinder args={[0.025, 0.025, 0.42, 6]} position={[0, 0.22, 0]}>
-            <meshStandardMaterial color="#5c625d" roughness={0.8} />
-          </Cylinder>
-          <Sphere args={[0.11, 8, 6]} position={[0, -0.02, 0]}>
-            <meshStandardMaterial color="#f6e5aa" emissive="#c78a2a" emissiveIntensity={0.28} roughness={0.58} />
-          </Sphere>
-        </group>
-      ))}
-      <Box args={[1.35, 0.08, 0.18]} position={[-2.35, 2.8, -0.25]}>
-        <meshStandardMaterial color="#f2e6ae" emissive="#8f732e" emissiveIntensity={0.16} roughness={0.62} />
-      </Box>
-      <Box args={[1.35, 0.08, 0.18]} position={[2.35, 2.8, -0.25]}>
-        <meshStandardMaterial color="#f2e6ae" emissive="#8f732e" emissiveIntensity={0.16} roughness={0.62} />
-      </Box>
-      <CeilingFan position={[-2.45, 3.0, 1.05]} />
-      <CeilingFan position={[2.2, 3.0, 1.05]} />
-      <Box args={[0.55, 0.55, 0.48]} position={[-4.1, 0.35, facadeZ - 0.24]}>
-        <meshStandardMaterial color="#3f7377" roughness={0.76} metalness={0.12} />
-      </Box>
-      <Cylinder args={[0.25, 0.28, 0.32, 10]} position={[4.0, 0.18, facadeZ - 0.24]}>
-        <meshStandardMaterial color="#c2523e" roughness={0.88} />
-      </Cylinder>
-      <Cylinder args={[0.26, 0.26, 0.12, 10]} position={[4.0, 0.39, facadeZ - 0.24]}>
-        <meshStandardMaterial color="#e4d1a0" roughness={0.76} />
-      </Cylinder>
-    </group>
-  )
+function Shell({ width, height, depth, facadeZ, variant, balcony = false }: { width: number; height: number; depth: number; facadeZ: number; variant: number; balcony?: boolean }) {
+  const upperHeight = Math.max(2.25, height - 3.05)
+  return <group><Box args={[width, upperHeight, depth]} position={[0, 3.05 + upperHeight / 2, 0]} castShadow receiveShadow><meshStandardMaterial color={['#c78d70', '#8ca69c', '#c4ac79', '#ad9892', '#789ba0'][variant % 5]} roughness={0.9} /></Box><Box args={[width + 0.2, 0.16, depth + 0.18]} position={[0, height + 0.08, 0]} castShadow><meshStandardMaterial color={['#675046', '#53605b', '#76634f', '#5f5a58'][variant % 4]} roughness={0.86} /></Box><Box args={[width + 0.12, 0.14, depth]} position={[0, 3, 0]}><meshStandardMaterial color="#9f866f" roughness={0.92} /></Box><Box args={[width - 0.32, 2.72, 0.16]} position={[0, 1.48, depth / 2 - 0.13]}><meshStandardMaterial color={variant % 2 ? '#596a68' : '#806e5d'} roughness={0.98} /></Box><Box args={[width - 0.34, 0.08, depth - 0.2]} position={[0, 0.05, 0]}><meshStandardMaterial color="#b6a58b" roughness={0.94} /></Box><Box args={[0.2, 3, depth]} position={[-width / 2 + 0.1, 1.5, 0]} castShadow><meshStandardMaterial color="#a6745b" roughness={0.86} /></Box><Box args={[0.2, 3, depth]} position={[width / 2 - 0.1, 1.5, 0]} castShadow><meshStandardMaterial color="#a6745b" roughness={0.86} /></Box><Box args={[width, 0.16, 0.22]} position={[0, 2.9, facadeZ - 0.04]}><meshStandardMaterial color="#6e594a" roughness={0.84} /></Box><UpperWindow x={-width * 0.24} y={4.15} facadeZ={facadeZ} variant={variant} /><UpperWindow x={width * 0.18} y={4.15} facadeZ={facadeZ} variant={variant + 1} />{height > 6.2 && <UpperWindow x={width * 0.02} y={5.58} facadeZ={facadeZ} variant={variant + 2} />}{balcony && <Balcony width={width} facadeZ={facadeZ} y={3.12} variant={variant} />}<AC x={width * (variant % 2 ? -0.3 : 0.31)} y={height - 0.85} facadeZ={facadeZ} variant={variant} />{variant % 3 === 0 && <ClothesRack x={-width * 0.38} y={height - 1.15} facadeZ={facadeZ} />}{variant % 3 === 1 && <ImagePlane src={ART.wear} width={0.9} height={1.2} position={[width * 0.39, 3.8, facadeZ - 0.075]} opacity={0.56} />}{variant % 4 === 0 && <group position={[width * 0.33, height + 0.42, 0]}><Box args={[0.88, 0.08, 0.88]} position={[0, -0.38, 0]}><meshStandardMaterial color="#505b57" roughness={0.88} /></Box><Cylinder args={[0.4, 0.4, 0.76, 10]}><meshStandardMaterial color="#4c7379" roughness={0.72} metalness={0.05} /></Cylinder></group>}</group>
 }
 
-function ProjectingSign({ color, position }: { color: string; position: [number, number, number] }) {
-  return (
-    <group position={position} rotation={[0, Math.PI / 2, 0]}>
-      <Box args={[0.08, 1.08, 0.62]} castShadow>
-        <meshStandardMaterial color={color} roughness={0.8} />
-      </Box>
-      <Box args={[0.12, 0.86, 0.08]} position={[0, -0.02, -0.35]}>
-        <meshStandardMaterial color="#5b625e" roughness={0.88} metalness={0.12} />
-      </Box>
-    </group>
-  )
+function Awning({ width, facadeZ, colors = ['#f4f0dc', '#32658a', '#c84a3d'] }: { width: number; facadeZ: number; colors?: string[] }) {
+  const segmentWidth = (width - 0.35) / 6
+  return <group position={[0, 2.72, facadeZ - 0.34]}>{Array.from({ length: 6 }, (_, index) => <Box key={index} args={[segmentWidth + 0.02, 0.1, 0.78]} position={[-width / 2 + 0.18 + segmentWidth / 2 + index * segmentWidth, 0, -0.12]} rotation={[0.18, 0, 0]} castShadow><meshStandardMaterial color={colors[index % colors.length]} roughness={0.82} /></Box>)}{[-width / 2 + 0.16, width / 2 - 0.16].map((x) => <Cylinder key={x} args={[0.035, 0.035, 0.86, 7]} position={[x, -0.25, -0.22]} rotation={[0.18, 0, 0]}><meshStandardMaterial color="#606a66" roughness={0.78} metalness={0.2} /></Cylinder>)}</group>
 }
 
-function Balcony({ height, facadeZ }: { height: number; facadeZ: number }) {
-  return (
-    <group position={[0.55, height - 1.35, facadeZ - 0.2]}>
-      <Box args={[3.2, 0.14, 0.95]} position={[0, 0, -0.26]}>
-        <meshStandardMaterial color="#a6aaa0" roughness={0.9} />
-      </Box>
-      <Box args={[3.2, 0.08, 0.08]} position={[0, 0.72, -0.74]}>
-        <meshStandardMaterial color="#535b57" roughness={0.75} metalness={0.1} />
-      </Box>
-      {[-1.35, -0.9, -0.45, 0, 0.45, 0.9, 1.35].map((x) => (
-        <Box key={x} args={[0.055, 0.75, 0.055]} position={[x, 0.36, -0.74]}>
-          <meshStandardMaterial color="#535b57" roughness={0.75} metalness={0.1} />
-        </Box>
-      ))}
-      <Cylinder args={[0.18, 0.2, 0.25, 8]} position={[-1.05, 0.2, -0.43]}>
-        <meshStandardMaterial color="#a76d50" roughness={0.9} />
-      </Cylinder>
-      <Icosahedron args={[0.32, 1]} position={[-1.05, 0.48, -0.43]}>
-        <meshStandardMaterial color="#5e8860" roughness={1} flatShading />
-      </Icosahedron>
-    </group>
-  )
+function Stool({ position, color, scale = 1 }: { position: Vec3; color: string; scale?: number }) {
+  return <group position={position} scale={scale}><Cylinder args={[0.21, 0.24, 0.08, 10]} position={[0, 0.54, 0]}><meshStandardMaterial color={color} roughness={0.82} /></Cylinder>{[-1, 1].map((side) => <Cylinder key={side} args={[0.025, 0.035, 0.52, 6]} position={[side * 0.1, 0.28, 0]} rotation={[0, 0, side * 0.12]}><meshStandardMaterial color="#68716d" roughness={0.8} metalness={0.15} /></Cylinder>)}</group>
 }
 
-function AirConditioner({ x, y, facadeZ }: { x: number; y: number; facadeZ: number }) {
-  return (
-    <group position={[x, y, facadeZ - 0.13]}>
-      <Box args={[0.75, 0.48, 0.22]}>
-        <meshStandardMaterial color="#d4d1c2" roughness={0.82} />
-      </Box>
-      {[-0.2, -0.07, 0.07, 0.2].map((offset) => (
-        <Box key={offset} args={[0.045, 0.24, 0.025]} position={[offset, 0, -0.13]}>
-          <meshStandardMaterial color="#707878" roughness={0.9} />
-        </Box>
-      ))}
-      <Box args={[0.9, 0.06, 0.3]} position={[0, -0.3, 0.08]}>
-        <meshStandardMaterial color="#5e6662" roughness={0.86} metalness={0.12} />
-      </Box>
-    </group>
-  )
+function Table({ position, variant }: { position: Vec3; variant: number }) {
+  return <group position={position}><Box args={[1.18, 0.08, 0.7]} position={[0, 1, 0]}><meshStandardMaterial color={variant % 2 ? '#6b5a45' : '#73533d'} roughness={0.84} /></Box>{[-0.44, 0.44].flatMap((x) => [-0.22, 0.22].map((z) => <Cylinder key={`${x}-${z}`} args={[0.035, 0.045, 0.98, 6]} position={[x, 0.5, z]}><meshStandardMaterial color="#59625e" roughness={0.8} metalness={0.16} /></Cylinder>))}<Cylinder args={[0.1, 0.12, 0.15, 8]} position={[-0.2, 1.12, 0]}><meshStandardMaterial color="#d8c9a0" roughness={0.7} /></Cylinder><Cylinder args={[0.09, 0.11, 0.13, 8]} position={[0.12, 1.11, 0.08]}><meshStandardMaterial color="#4d7770" roughness={0.78} /></Cylinder></group>
 }
 
-function StorefrontAwning({ color, facadeZ, width }: { color: string; facadeZ: number; width: number }) {
-  const awningWidth = width - 0.55
-
-  return (
-    <group position={[0, 2.05, facadeZ - 0.38]}>
-      <Box args={[awningWidth, 0.12, 0.72]} rotation={[0.16, 0, 0]} castShadow>
-        <meshStandardMaterial color={color} roughness={0.82} />
-      </Box>
-      {[-awningWidth / 2 + 0.12, awningWidth / 2 - 0.12].map((x) => (
-        <Cylinder key={x} args={[0.035, 0.035, 0.58, 6]} position={[x, -0.24, -0.25]}>
-          <meshStandardMaterial color="#626a66" roughness={0.86} metalness={0.12} />
-        </Cylinder>
-      ))}
-    </group>
-  )
+function Fan({ position }: { position: Vec3 }) {
+  return <group position={position}><Cylinder args={[0.07, 0.07, 0.38, 8]} position={[0, 0.2, 0]}><meshStandardMaterial color="#59615d" metalness={0.25} roughness={0.7} /></Cylinder><Cylinder args={[0.13, 0.13, 0.08, 10]}><meshStandardMaterial color="#b5b6a2" roughness={0.62} metalness={0.2} /></Cylinder>{[0, 1, 2, 3].map((index) => <Box key={index} args={[0.78, 0.025, 0.12]} position={[Math.cos(index * Math.PI / 2) * 0.34, -0.05, Math.sin(index * Math.PI / 2) * 0.34]} rotation={[0, index * Math.PI / 2, 0]}><meshStandardMaterial color="#747b70" roughness={0.75} /></Box>)}</group>
 }
 
-function PottedPlant({ position }: { position: [number, number, number] }) {
-  return (
-    <group position={position}>
-      <Cylinder args={[0.2, 0.26, 0.32, 8]} position={[0, 0.16, 0]}>
-        <meshStandardMaterial color="#a56547" roughness={0.92} />
-      </Cylinder>
-      <Icosahedron args={[0.34, 1]} position={[0, 0.56, 0]}>
-        <meshStandardMaterial color="#4f805d" roughness={1} flatShading />
-      </Icosahedron>
-    </group>
-  )
+function PhoInterior({ width, depth, facadeZ }: { width: number; depth: number; facadeZ: number }) {
+  const tables: Vec3[] = [[-1.9, 0, -1.25], [0, 0, -0.25], [1.88, 0, 0.78], [-1.35, 0, 1.48], [0.88, 0, 1.66]]
+  return <group><TexturedBox src={ART.tile} args={[width - 0.46, 0.025, depth - 0.3]} position={[0, 0.09, 0]} /><Box args={[width - 0.7, 2.2, 0.14]} position={[0, 1.42, depth / 2 - 0.19]}><meshStandardMaterial color="#e8d5a8" roughness={0.92} /></Box><ImagePlane src={ART.wear} width={width - 0.9} height={1.4} position={[0, 1.44, depth / 2 - 0.27]} rotation={[0, 0, 0]} opacity={0.22} />{tables.map((position, index) => <group key={position.join('-')}><Table position={position} variant={index} /><Stool position={[position[0] - 0.8, 0, position[2]]} color={index % 2 ? '#c64f40' : '#3e7772'} /><Stool position={[position[0] + 0.8, 0, position[2]]} color={index % 2 ? '#3e7772' : '#c64f40'} /></group>)}<group position={[width * 0.32, 1.08, depth / 2 - 0.62]}><Box args={[1.45, 1.55, 0.52]}><meshStandardMaterial color="#9aa4a0" roughness={0.42} metalness={0.52} /></Box><Box args={[1.35, 0.58, 0.06]} position={[0, 0.25, -0.3]}><meshStandardMaterial color="#bdd0c7" roughness={0.24} /></Box><Cylinder args={[0.3, 0.33, 0.45, 12]} position={[-0.35, 0.93, 0]}><meshStandardMaterial color="#4d5d5b" metalness={0.44} roughness={0.42} /></Cylinder><Cylinder args={[0.28, 0.3, 0.42, 12]} position={[0.3, 0.93, 0]}><meshStandardMaterial color="#59645d" metalness={0.42} roughness={0.44} /></Cylinder></group><group position={[-width * 0.36, 0.28, depth / 2 - 0.55]}>{[-0.3, 0, 0.3].map((x) => <Cylinder key={x} args={[0.1, 0.12, 0.2, 10]} position={[x, 0, 0]}><meshStandardMaterial color="#e8e0c8" roughness={0.66} /></Cylinder>)}<Cylinder args={[0.34, 0.38, 0.4, 12]} position={[0, 0.32, 0]}><meshStandardMaterial color="#4e5d5b" metalness={0.5} roughness={0.4} /></Cylinder><Cylinder args={[0.2, 0.21, 0.15, 10]} position={[0, 0.62, 0]}><meshStandardMaterial color="#242b2c" roughness={0.8} /></Cylinder></group><Poster src={ART.menu} width={1.42} height={1.02} position={[-width * 0.27, 1.58, facadeZ - 0.13]} /><Box args={[width - 0.8, 0.035, 0.035]} position={[0, 2.62, facadeZ - 0.35]}><meshStandardMaterial color="#d7d6c0" emissive="#d7d6c0" emissiveIntensity={0.25} /></Box><Fan position={[-1.3, 2.76, 0.3]} /><Fan position={[1.45, 2.76, 1.45]} /><pointLight position={[0, 2.3, 0.7]} color="#ffd889" intensity={1.2} distance={7} decay={2} /></group>
 }
 
-function ShopProps({ label, facadeZ }: { label: string; facadeZ: number }) {
-  if (['CÀ PHÊ', 'PHỞ BÒ', 'PHỞ GÀ', 'BÚN CHẢ', 'CƠM BÌNH DÂN', 'BÁNH MÌ', 'TRÀ ĐÁ'].includes(label)) {
-    return (
-      <group position={[0, 0, facadeZ - 0.58]}>
-        <Cylinder args={[0.26, 0.26, 0.66, 8]} position={[-1.15, 0.33, 0]}>
-          <meshStandardMaterial color="#a96d4f" roughness={0.9} />
-        </Cylinder>
-        <Cylinder args={[0.26, 0.26, 0.66, 8]} position={[1.25, 0.33, 0]}>
-          <meshStandardMaterial color="#a96d4f" roughness={0.9} />
-        </Cylinder>
-        <Box args={[1.65, 0.1, 0.72]} position={[0.05, 0.73, 0]}>
-          <meshStandardMaterial color="#6f5340" roughness={0.92} />
-        </Box>
-        <Cylinder args={[0.17, 0.22, 0.32, 8]} position={[-1.85, 0.16, 0.02]}>
-          <meshStandardMaterial color="#557773" roughness={0.9} />
-        </Cylinder>
-        {[-1.65, -0.6, 0.62, 1.62].map((x) => (
-          <group key={x} position={[x, 0, 0.32]}>
-            <Cylinder args={[0.13, 0.16, 0.42, 8]} position={[0, 0.21, 0]}>
-              <meshStandardMaterial color="#c65c48" roughness={0.9} />
-            </Cylinder>
-            <Cylinder args={[0.17, 0.17, 0.045, 8]} position={[0, 0.44, 0]}>
-              <meshStandardMaterial color="#3f6864" roughness={0.9} />
-            </Cylinder>
-          </group>
-        ))}
-      </group>
-    )
-  }
-
-  if (label === 'SỬA XE MÁY' || label === 'RỬA XE') {
-    return (
-      <group position={[0, 0, facadeZ - 0.45]}>
-        {[-1.7, -1.25, -0.8].map((x) => (
-          <Cylinder key={x} args={[0.22, 0.22, 0.12, 12]} rotation={[Math.PI / 2, 0, 0]} position={[x, 0.23, 0]}>
-            <meshStandardMaterial color="#252b2b" roughness={0.96} />
-          </Cylinder>
-        ))}
-        <Box args={[0.1, 1.4, 0.1]} position={[1.75, 0.7, 0]}>
-          <meshStandardMaterial color="#626a66" roughness={0.82} metalness={0.15} />
-        </Box>
-        <Box args={[0.8, 0.08, 0.08]} position={[1.75, 1.33, 0]}>
-          <meshStandardMaterial color="#626a66" roughness={0.82} metalness={0.15} />
-        </Box>
-        <Box args={[0.62, 0.44, 0.42]} position={[1.16, 0.24, 0.02]}>
-          <meshStandardMaterial color="#9c7043" roughness={0.94} />
-        </Box>
-      </group>
-    )
-  }
-
-  if (label === 'TẠP HÓA') {
-    return (
-      <group position={[0, 0, facadeZ - 0.44]}>
-        {[-1.75, -1.2, -0.65].map((x, index) => (
-          <Box key={x} args={[0.42, 0.36 + index * 0.08, 0.48]} position={[x, 0.18 + index * 0.04, 0]}>
-            <meshStandardMaterial color={index % 2 === 0 ? '#b77b48' : '#687f70'} roughness={0.94} />
-          </Box>
-        ))}
-        <Box args={[0.1, 1.35, 0.42]} position={[1.45, 0.68, 0]}>
-          <meshStandardMaterial color="#77756b" roughness={0.88} metalness={0.12} />
-        </Box>
-        <Box args={[0.72, 0.08, 0.46]} position={[1.45, 1.35, 0]}>
-          <meshStandardMaterial color="#737b72" roughness={0.88} metalness={0.12} />
-        </Box>
-      </group>
-    )
-  }
-
-  return (
-    <group position={[0, 0, facadeZ - 0.44]}>
-      <Box args={[0.58, 0.55, 0.48]} position={[-1.85, 0.28, 0]}>
-        <meshStandardMaterial color="#a77a45" roughness={0.94} />
-      </Box>
-      <Box args={[0.58, 0.45, 0.48]} position={[-1.2, 0.23, 0]}>
-        <meshStandardMaterial color="#728d78" roughness={0.92} />
-      </Box>
-      <Box args={[0.42, 0.9, 0.38]} position={[1.75, 0.45, 0]}>
-        <meshStandardMaterial color="#596b64" roughness={0.82} />
-      </Box>
-    </group>
-  )
+function BarberChair({ position, color }: { position: Vec3; color: string }) {
+  return <group position={position}><Cylinder args={[0.22, 0.27, 0.84, 10]} position={[0, 0.56, 0]}><meshStandardMaterial color="#4a5553" metalness={0.35} roughness={0.58} /></Cylinder><Box args={[0.62, 0.54, 0.66]} position={[0, 1.18, 0]}><meshStandardMaterial color={color} roughness={0.68} /></Box><Box args={[0.56, 0.82, 0.18]} position={[0, 1.75, 0.18]} rotation={[-0.1, 0, 0]}><meshStandardMaterial color={color} roughness={0.68} /></Box><Box args={[0.22, 0.24, 0.2]} position={[0, 2.25, 0.12]}><meshStandardMaterial color="#b68a67" roughness={0.82} /></Box><Box args={[0.22, 0.06, 0.72]} position={[0, 0.86, 0]}><meshStandardMaterial color="#d0b85c" metalness={0.32} roughness={0.48} /></Box></group>
 }
 
-type ShopHouseProps = {
-  x: number
-  z: number
-  bodyColor: string
-  roofColor: string
-  signColor: string
-  label: string
-  heightBias?: number
-  hasBalcony?: boolean
+function BarberInterior({ width, depth, facadeZ }: { width: number; depth: number; facadeZ: number }) {
+  return <group><TexturedBox src={ART.tile} args={[width - 0.45, 0.025, depth - 0.25]} position={[0, 0.09, 0]} />{[-1.4, 0, 1.4].map((x, index) => <group key={x} position={[x, 0, 1.28]}><Box args={[1.02, 1.45, 0.08]} position={[0, 2.03, 0.02]}><meshStandardMaterial color="#b7d2d0" roughness={0.16} metalness={0.34} /></Box><Box args={[1.1, 0.08, 0.22]} position={[0, 1.25, -0.04]}><meshStandardMaterial color="#493c34" roughness={0.66} /></Box>{[-0.35, -0.1, 0.18, 0.42].map((bottle, bottleIndex) => <Cylinder key={bottle} args={[0.045, 0.06, 0.3 + (bottleIndex % 2) * 0.12, 8]} position={[bottle, 1.48, -0.04]}><meshStandardMaterial color={['#d59c3d', '#6f8a78', '#b64e47', '#517790'][bottleIndex]} roughness={0.62} /></Cylinder>)}</group>)}<BarberChair position={[-1.35, 0, -0.78]} color="#542f2c" /><BarberChair position={[0, 0, -0.58]} color="#343c43" /><BarberChair position={[1.35, 0, -0.38]} color="#5a382c" /><Box args={[width - 0.65, 0.66, 0.52]} position={[0, 0.42, depth / 2 - 0.55]}><meshStandardMaterial color="#384246" roughness={0.76} /></Box><Poster src={ART.services} width={0.56} height={1.66} position={[width / 2 - 0.36, 1.38, facadeZ - 0.13]} /><Box args={[width - 0.8, 0.035, 0.035]} position={[0, 2.67, 0.35]}><meshStandardMaterial color="#e7ddc3" emissive="#e7ddc3" emissiveIntensity={0.32} /></Box><pointLight position={[0, 2.1, 0]} color="#f8dc9b" intensity={1} distance={6} decay={2} /></group>
 }
 
-function ShopHouse({ x, z, bodyColor, roofColor, signColor, label, heightBias = 0, hasBalcony = false }: ShopHouseProps) {
-  const variation = Math.abs(Math.round(x * 10)) % 4
-  const width = 4.35 + variation * 0.3 + (label.length > 9 ? 0.18 : 0)
-  const depth = 3.65 + (variation % 3) * 0.18
-  const height = 5.4 + (variation % 3) * 0.48 + heightBias
-  const facing = z > 0 ? 0 : Math.PI
-  const facadeZ = -depth / 2 - 0.02
-  const hasTank = Math.abs(x) % 3 === 0
-  const windowRows = height > 6.25 ? [3.2, 4.62, 6.04] : [3.25, 4.7]
-
-  return (
-    <group position={[x, 0, z]} rotation={[0, facing, 0]}>
-      <Box args={[width, height, depth]} position={[0, height / 2, 0]} castShadow receiveShadow>
-        <meshStandardMaterial color={bodyColor} roughness={0.9} />
-      </Box>
-      <Box args={[width + 0.22, 0.22, depth + 0.2]} position={[0, height + 0.1, 0]} castShadow>
-        <meshStandardMaterial color={roofColor} roughness={0.86} />
-      </Box>
-      <Box args={[width, 0.24, depth]} position={[0, 0.16, 0]}>
-        <meshStandardMaterial color="#8a6a58" roughness={0.96} />
-      </Box>
-      <Box args={[width + 0.12, 0.16, 0.85]} position={[0, 2.15, facadeZ - 0.26]} castShadow>
-        <meshStandardMaterial color={roofColor} roughness={0.8} />
-      </Box>
-
-      <Box args={[width - 0.62, 1.48, 0.08]} position={[-0.12, 0.82, facadeZ]}>
-        <meshStandardMaterial color="#3c5b60" roughness={0.34} metalness={0.03} />
-      </Box>
-      {[-width / 2 + 0.16, -width * 0.19, width * 0.18, width / 2 - 0.16].map((frameX) => (
-        <Box key={frameX} args={[0.07, 1.58, 0.1]} position={[frameX, 0.82, facadeZ - 0.03]}>
-          <meshStandardMaterial color="#5f5d53" roughness={0.78} metalness={0.12} />
-        </Box>
-      ))}
-      <Box args={[0.72, 1.58, 0.09]} position={[width * 0.33, 0.82, facadeZ]}>
-        <meshStandardMaterial color="#65493b" roughness={0.86} />
-      </Box>
-      <Box args={[0.14, height, 0.1]} position={[-width / 2 + 0.05, height / 2, facadeZ + 0.02]}>
-        <meshStandardMaterial color="#9b604a" roughness={0.86} />
-      </Box>
-
-      <SignBoard label={label} color={signColor} width={Math.min(width - 0.3, label.length > 9 ? 4.3 : 3.75)} position={[-0.1, height - 0.78, facadeZ - 0.08]} />
-      <ProjectingSign color={signColor} position={[width / 2 + 0.12, 2.75, facadeZ - 0.04]} />
-      <StorefrontAwning color={signColor} facadeZ={facadeZ} width={width} />
-      <ShopProps label={label} facadeZ={facadeZ} />
-      <PottedPlant position={[width / 2 - 0.36, 0, facadeZ - 0.66]} />
-      <AirConditioner x={width / 2 - 0.7} y={height - 1.05} facadeZ={facadeZ} />
-
-      {windowRows.map((windowY, row) => (
-        <group key={windowY}>
-          {[-width * 0.26, width * 0.13].map((windowX) => (
-            <group key={windowX}>
-              <Box args={[0.86, 1.12, 0.08]} position={[windowX, windowY, facadeZ]}>
-                <meshStandardMaterial color="#78a0a4" roughness={0.36} metalness={0.04} />
-              </Box>
-              <Box args={[0.92, 0.08, 0.12]} position={[windowX, windowY - 0.6, facadeZ - 0.04]}>
-                <meshStandardMaterial color="#65675e" roughness={0.8} />
-              </Box>
-              {row === 0 && <Box args={[0.92, 0.08, 0.12]} position={[windowX, windowY + 0.6, facadeZ - 0.04]}>
-                <meshStandardMaterial color="#65675e" roughness={0.8} />
-              </Box>}
-            </group>
-          ))}
-        </group>
-      ))}
-
-      {hasBalcony && <Balcony height={height} facadeZ={facadeZ} />}
-      {hasTank && (
-        <group position={[1.35, height + 0.6, 0]}>
-          <Box args={[0.8, 0.08, 0.8]} position={[0, -0.35, 0]}>
-            <meshStandardMaterial color="#59625e" roughness={0.88} metalness={0.08} />
-          </Box>
-          <Cylinder args={[0.38, 0.38, 0.72, 8]}>
-            <meshStandardMaterial color="#526f76" roughness={0.68} metalness={0.05} />
-          </Cylinder>
-        </group>
-      )}
-    </group>
-  )
+function Bike({ x, z, color, flip = false, scale = 0.72 }: { x: number; z: number; color: string; flip?: boolean; scale?: number }) {
+  return <group position={[x, 0, z]} rotation={[0, flip ? Math.PI : 0, 0]} scale={scale}><Cylinder args={[0.3, 0.3, 0.1, 10]} rotation={[Math.PI / 2, 0, 0]} position={[-0.62, 0.3, 0]}><meshStandardMaterial color="#242b2c" roughness={0.92} /></Cylinder><Cylinder args={[0.3, 0.3, 0.1, 10]} rotation={[Math.PI / 2, 0, 0]} position={[0.62, 0.3, 0]}><meshStandardMaterial color="#242b2c" roughness={0.92} /></Cylinder><Box args={[0.2, 0.4, 0.28]} position={[0.5, 0.96, 0]} rotation={[0, 0, -0.1]}><meshStandardMaterial color={color} roughness={0.72} /></Box><Box args={[0.8, 0.11, 0.25]} position={[-0.22, 0.98, 0]}><meshStandardMaterial color="#171f20" roughness={0.92} /></Box><Box args={[0.34, 0.26, 0.28]} position={[-0.62, 0.8, 0]}><meshStandardMaterial color={color} roughness={0.7} /></Box><Cylinder args={[0.023, 0.028, 0.64, 7]} rotation={[0, 0, -0.13]} position={[0.55, 0.56, 0.12]}><meshStandardMaterial color="#9fa7a0" roughness={0.66} metalness={0.28} /></Cylinder><Box args={[0.035, 0.13, 0.18]} position={[0.626, 1.03, 0]}><meshStandardMaterial color="#d5d4b8" roughness={0.36} /></Box></group>
 }
 
-function UtilityPole({ x, z, transformer = false, flag = false }: { x: number; z: number; transformer?: boolean; flag?: boolean }) {
-  return (
-    <group position={[x, 0, z]}>
-      <Cylinder args={[0.11, 0.16, 7.3, 6]} position={[0, 3.65, 0]} castShadow>
-        <meshStandardMaterial color="#4c514d" roughness={0.9} />
-      </Cylinder>
-      <Box args={[1.8, 0.12, 0.12]} position={[0, 6.65, 0]}>
-        <meshStandardMaterial color="#4c514d" roughness={0.9} metalness={0.08} />
-      </Box>
-      {[-0.65, 0, 0.65].map((offset) => (
-        <Cylinder key={offset} args={[0.045, 0.045, 0.24, 6]} position={[offset, 6.82, 0]}>
-          <meshStandardMaterial color="#d1b873" roughness={0.7} />
-        </Cylinder>
-      ))}
-      {transformer && (
-      <Box args={[0.65, 0.62, 0.55]} position={[0.42, 5.72, 0.18]}>
-          <meshStandardMaterial color="#737b72" roughness={0.78} metalness={0.12} />
-        </Box>
-      )}
-      {flag && (
-        <group position={[0.05, 5.75, -0.18]}>
-          <Box args={[0.82, 0.48, 0.04]}>
-            <meshStandardMaterial color="#b8443e" roughness={0.84} />
-          </Box>
-          <mesh position={[0, 0, -0.035]}>
-            <shapeGeometry args={[vietnamStarShape]} />
-            <meshStandardMaterial color="#f2cf5b" roughness={0.72} emissive="#5c4613" emissiveIntensity={0.12} side={THREE.DoubleSide} />
-          </mesh>
-        </group>
-      )}
-    </group>
-  )
+function ToolRack({ position }: { position: Vec3 }) {
+  return <group position={position}><Box args={[1.45, 0.95, 0.08]}><meshStandardMaterial color="#4c5c5b" roughness={0.7} metalness={0.25} /></Box>{[-0.52, -0.26, 0, 0.27, 0.54].map((x, index) => <group key={x} position={[x, 0, -0.08]}><Cylinder args={[0.025, 0.03, 0.55 + (index % 2) * 0.25, 6]} rotation={[0, 0, (index - 2) * 0.15]}><meshStandardMaterial color="#a6aaa0" metalness={0.6} roughness={0.34} /></Cylinder><Box args={[0.12, 0.08, 0.04]} position={[0, -0.3, 0]}><meshStandardMaterial color="#c55d3c" roughness={0.62} /></Box></group>)}</group>
 }
 
-function StreetTree({ x, z, scale = 1, canopyColor = '#5d8760' }: { x: number; z: number; scale?: number; canopyColor?: string }) {
-  return (
-    <group position={[x, 0, z]} scale={[scale, scale, scale]}>
-      <Box args={[1.12, 0.035, 1.12]} position={[0, 0.32, 0]}>
-        <meshStandardMaterial color="#83735c" roughness={1} />
-      </Box>
-      <Cylinder args={[0.18, 0.24, 2.4, 7]} position={[0, 1.2, 0]}>
-        <meshStandardMaterial color="#6f4e38" roughness={1} />
-      </Cylinder>
-      <Cylinder args={[0.07, 0.1, 1.25, 6]} rotation={[0, 0, -0.58]} position={[-0.32, 2.35, 0]}>
-        <meshStandardMaterial color="#6f4e38" roughness={1} />
-      </Cylinder>
-      <Cylinder args={[0.07, 0.1, 1.1, 6]} rotation={[0, 0, 0.65]} position={[0.36, 2.45, 0]}>
-        <meshStandardMaterial color="#6f4e38" roughness={1} />
-      </Cylinder>
-      <Icosahedron args={[1.18, 1]} position={[0, 3, 0]} castShadow>
-        <meshStandardMaterial color={canopyColor} roughness={1} flatShading />
-      </Icosahedron>
-      <Icosahedron args={[0.75, 1]} position={[0.65, 3.45, 0.1]} castShadow>
-        <meshStandardMaterial color="#78a06d" roughness={1} flatShading />
-      </Icosahedron>
-      <Icosahedron args={[0.62, 1]} position={[-0.62, 3.35, 0.12]} castShadow>
-        <meshStandardMaterial color="#4e7857" roughness={1} flatShading />
-      </Icosahedron>
-    </group>
-  )
+function RepairInterior({ width, depth, facadeZ }: { width: number; depth: number; facadeZ: number }) {
+  return <group><TexturedBox src={ART.wear} args={[width - 0.4, 0.025, depth - 0.2]} position={[0, 0.09, 0]} color="#8e765e" /><TexturedBox src={ART.shutter} args={[width - 0.42, 1.12, 0.06]} position={[0, 2.25, facadeZ - 0.03]} /><Box args={[0.13, 2.55, 0.16]} position={[-width / 2 + 0.27, 1.37, facadeZ - 0.05]}><meshStandardMaterial color="#465454" metalness={0.35} roughness={0.7} /></Box><Box args={[1.5, 0.22, 2.25]} position={[-0.8, 0.25, 0.28]}><meshStandardMaterial color="#6d706a" roughness={0.6} metalness={0.36} /></Box><Box args={[1.62, 0.08, 2.3]} position={[-0.8, 0.39, 0.28]}><meshStandardMaterial color="#bc934e" roughness={0.54} metalness={0.36} /></Box><group position={[1.15, 0, depth / 2 - 0.57]}><Box args={[1.5, 0.95, 0.62]} position={[0, 0.64, 0]}><meshStandardMaterial color="#76523b" roughness={0.88} /></Box><Box args={[1.62, 0.08, 0.7]} position={[0, 1.15, 0]}><meshStandardMaterial color="#4a5552" roughness={0.78} metalness={0.22} /></Box>{[-0.45, -0.18, 0.1, 0.38].map((x, index) => <Cylinder key={x} args={[0.05, 0.07, 0.36 + (index % 2) * 0.18, 8]} position={[x, 1.42, 0]}><meshStandardMaterial color={['#b5a15e', '#4a7f83', '#b45342', '#677c93'][index]} roughness={0.7} metalness={0.25} /></Cylinder>)}</group><ToolRack position={[1.05, 2.1, depth / 2 - 0.25]} />{[[-1.75, 0.4, 0.65], [-1.45, 0.4, 1.25], [1.65, 0.36, 1.44]].map(([x, y, z]) => <Torus key={`${x}-${z}`} args={[0.28, 0.08, 10, 20]} rotation={[Math.PI / 2, 0, 0]} position={[x, y, z]}><meshStandardMaterial color="#20282a" roughness={0.94} /></Torus>)}<Bike x={0.8} z={-0.88} color="#9a4b42" scale={0.64} /><Bike x={1.65} z={-0.05} color="#4b6873" scale={0.52} flip /><pointLight position={[0, 2.6, 0.3]} color="#f2c67c" intensity={0.85} distance={6} decay={2} /></group>
 }
 
-function StreetLamp({ x, z }: { x: number; z: number }) {
-  return (
-    <group position={[x, 0, z]}>
-      <Cylinder args={[0.06, 0.09, 3.8, 6]} position={[0, 1.9, 0]} castShadow>
-        <meshStandardMaterial color="#55615c" roughness={0.82} />
-      </Cylinder>
-      <Box args={[0.38, 0.13, 0.18]} position={[0, 3.82, -0.16]}>
-        <meshStandardMaterial color="#e7d38a" emissive="#5c4a19" emissiveIntensity={0.18} roughness={0.65} />
-      </Box>
-    </group>
-  )
+function GroceryShelf({ x, z, rowOffset }: { x: number; z: number; rowOffset: number }) {
+  const width = 1.15
+  return <group position={[x, 0, z]}><Box args={[width, 2.25, 0.22]} position={[0, 1.18, 0]}><meshStandardMaterial color="#76553e" roughness={0.88} /></Box>{[-0.8, -0.1, 0.6].map((y, index) => <group key={y}><Box args={[width + 0.12, 0.065, 0.58]} position={[0, y + 0.45, -0.03]}><meshStandardMaterial color="#b38152" roughness={0.82} /></Box>{Array.from({ length: 4 }, (_, packageIndex) => <group key={packageIndex} position={[-width / 2 + 0.16 + packageIndex * 0.28, y + 0.59, -0.34]}><Box args={[0.24, 0.32 + ((packageIndex + index + rowOffset) % 2) * 0.1, 0.15]}><meshStandardMaterial color={['#d65c43', '#3b7c73', '#d4ab3c', '#5979a0'][(packageIndex + rowOffset) % 4]} roughness={0.82} /></Box><AtlasTile src={ART.products} columns={4} width={0.2} height={0.17} position={[0, 0.01, -0.09]} column={(packageIndex + rowOffset) % 4} row={(index + rowOffset) % 2} /></group>)}</group>)}</group>
 }
 
-function CableSpan({
-  xStart,
-  xEnd,
-  z,
-  baseY,
-  sag,
-  zOffset,
-  color,
-  lineWidth,
-}: {
-  xStart: number
-  xEnd: number
-  z: number
-  baseY: number
-  sag: number
-  zOffset: number
-  color: string
-  lineWidth: number
-}) {
-  const midpoint = (xStart + xEnd) / 2
-  return (
-    <Line
-      points={[
-        [xStart, baseY, z],
-        [midpoint, baseY - sag, z + zOffset],
-        [xEnd, baseY, z],
-      ]}
-      color={color}
-      lineWidth={lineWidth}
-    />
-  )
+function GroceryInterior({ width, depth, facadeZ }: { width: number; depth: number; facadeZ: number }) {
+  return <group><TexturedBox src={ART.tile} args={[width - 0.45, 0.025, depth - 0.25]} position={[0, 0.09, 0]} color="#bca87c" /><TexturedBox src={ART.shutter} args={[width - 0.4, 0.78, 0.06]} position={[0, 2.5, facadeZ - 0.03]} /><GroceryShelf x={-1.7} z={0.62} rowOffset={0} /><GroceryShelf x={0} z={1.15} rowOffset={1} /><GroceryShelf x={1.7} z={0.6} rowOffset={2} /><group position={[0, 0, facadeZ - 0.55]}>{[-1.75, -0.65, 0.52, 1.68].map((x, index) => <group key={x} position={[x, 0, 0]}><Box args={[0.62, 0.54 + (index % 2) * 0.2, 0.65]} position={[0, 0.29, 0]}><meshStandardMaterial color={['#cf5c41', '#54826e', '#d4ab3e', '#55789a'][index]} roughness={0.88} /></Box><AtlasTile src={ART.products} columns={4} width={0.52} height={0.32} position={[0, 0.32, -0.34]} column={index % 4} row={(index + 1) % 2} /></group>)}</group><Box args={[0.9, 0.76, 0.82]} position={[-width / 2 - 0.25, 0.45, facadeZ - 0.65]}><meshStandardMaterial color="#ad774b" roughness={0.94} /></Box><Box args={[0.78, 0.52, 0.76]} position={[width / 2 + 0.18, 0.31, facadeZ - 0.6]}><meshStandardMaterial color="#7a9c7d" roughness={0.92} /></Box><Box args={[0.72, 0.42, 0.7]} position={[width / 2 + 0.35, 0.85, facadeZ - 0.55]}><meshStandardMaterial color="#d0a141" roughness={0.92} /></Box><pointLight position={[0, 2.1, 0.65]} color="#ffe09a" intensity={0.72} distance={6} decay={2} /></group>
 }
 
-function ParkedUnderbone({ x, z, color, flip = false }: { x: number; z: number; color: string; flip?: boolean }) {
-  return (
-    <group position={[x, 0, z]} rotation={[0, flip ? Math.PI : 0, 0]} scale={0.72}>
-      <Cylinder args={[0.3, 0.3, 0.1, 10]} rotation={[Math.PI / 2, 0, 0]} position={[-0.62, 0.3, 0]}>
-        <meshStandardMaterial color="#242b2c" roughness={0.92} />
-      </Cylinder>
-      <Cylinder args={[0.3, 0.3, 0.1, 10]} rotation={[Math.PI / 2, 0, 0]} position={[0.62, 0.3, 0]}>
-        <meshStandardMaterial color="#242b2c" roughness={0.92} />
-      </Cylinder>
-      <Cylinder args={[0.12, 0.12, 0.12, 8]} rotation={[Math.PI / 2, 0, 0]} position={[-0.62, 0.3, 0]}>
-        <meshStandardMaterial color="#aeb3aa" roughness={0.65} metalness={0.24} />
-      </Cylinder>
-      <Cylinder args={[0.12, 0.12, 0.12, 8]} rotation={[Math.PI / 2, 0, 0]} position={[0.62, 0.3, 0]}>
-        <meshStandardMaterial color="#aeb3aa" roughness={0.65} metalness={0.24} />
-      </Cylinder>
-      <Box args={[0.2, 0.4, 0.28]} position={[0.5, 0.96, 0]} rotation={[0, 0, -0.1]}>
-        <meshStandardMaterial color={color} roughness={0.72} />
-      </Box>
-      <Box args={[0.035, 0.13, 0.18]} position={[0.626, 1.03, 0]}>
-        <meshStandardMaterial color="#d5d4b8" roughness={0.36} />
-      </Box>
-      {[-1, 1].map((side) => (
-        <Cylinder key={side} args={[0.023, 0.028, 0.64, 7]} rotation={[0, 0, -0.13]} position={[0.55, 0.56, side * 0.12]}>
-          <meshStandardMaterial color="#9fa7a0" roughness={0.66} metalness={0.28} />
-        </Cylinder>
-      ))}
-      <Box args={[0.8, 0.11, 0.25]} position={[-0.22, 0.98, 0]} rotation={[0, 0, -0.045]}>
-        <meshStandardMaterial color="#171f20" roughness={0.92} />
-      </Box>
-      <Box args={[0.34, 0.26, 0.28]} position={[-0.62, 0.8, 0]} rotation={[0, 0, 0.12]}>
-        <meshStandardMaterial color={color} roughness={0.7} />
-      </Box>
-      <Box args={[0.24, 0.2, 0.25]} position={[-0.81, 0.87, 0]} rotation={[0, 0, 0.18]}>
-        <meshStandardMaterial color={color} roughness={0.76} />
-      </Box>
-      <Box args={[0.035, 0.1, 0.18]} position={[-0.925, 0.88, 0]}>
-        <meshStandardMaterial color="#b34e48" roughness={0.5} />
-      </Box>
-      <Box args={[0.68, 0.1, 0.15]} position={[-0.08, 0.7, 0]} rotation={[0, 0, -0.08]}>
-        <meshStandardMaterial color="#4b5552" roughness={0.84} metalness={0.14} />
-      </Box>
-      <Box args={[0.36, 0.25, 0.28]} position={[-0.18, 0.54, 0]}>
-        <meshStandardMaterial color="#242d2e" roughness={0.9} />
-      </Box>
-      <Cylinder args={[0.065, 0.074, 0.36, 8]} rotation={[0, 0, Math.PI / 2]} position={[-0.62, 0.44, -0.2]}>
-        <meshStandardMaterial color="#252d2e" roughness={0.84} metalness={0.18} />
-      </Cylinder>
-      <Box args={[0.27, 0.045, 0.08]} position={[-0.62, 0.51, -0.25]}>
-        <meshStandardMaterial color="#59615d" roughness={0.7} metalness={0.2} />
-      </Box>
-    </group>
-  )
+function TeaStall({ width, depth, facadeZ }: { width: number; depth: number; facadeZ: number }) {
+  return <group><TexturedBox src={ART.tile} args={[width - 0.45, 0.025, depth - 0.25]} position={[0, 0.09, 0]} color="#b5a17c" /><Cone args={[1.75, 0.55, 10]} position={[-0.35, 3.05, facadeZ - 0.65]} scale={[1, 0.8, 1]}><meshStandardMaterial color="#dc5b42" roughness={0.88} /></Cone><Cylinder args={[0.035, 0.045, 2.45, 7]} position={[-0.35, 1.65, facadeZ - 0.65]}><meshStandardMaterial color="#626b65" roughness={0.8} metalness={0.18} /></Cylinder><group position={[0.95, 0.9, facadeZ - 0.46]}><Box args={[1.65, 1.1, 0.48]}><meshStandardMaterial color="#48766f" roughness={0.78} /></Box><Box args={[1.4, 0.64, 0.06]} position={[0, 0.12, -0.27]}><meshStandardMaterial color="#b8d3cb" roughness={0.24} metalness={0.12} /></Box>{[-0.55, -0.25, 0.05, 0.38, 0.62].map((x, index) => <Cylinder key={x} args={[0.07, 0.08, 0.45 + (index % 2) * 0.12, 8]} position={[x, 0.9, -0.12]}><meshStandardMaterial color={['#b9d0c7', '#d8a847', '#76a2a5', '#dc6149', '#e0d8b5'][index]} roughness={0.4} /></Cylinder>)}<ImagePlane src={ART.tea} width={1.16} height={0.48} position={[0, 0.37, -0.28]} /></group><Stool position={[-1.38, 0, facadeZ - 1.62]} color="#d15b42" scale={0.84} /><Stool position={[-0.82, 0, facadeZ - 0.75]} color="#3e7772" scale={0.84} /><Stool position={[-0.1, 0, facadeZ - 1.72]} color="#e1bd42" scale={0.84} /><Stool position={[0.86, 0, facadeZ - 1.05]} color="#c8554b" scale={0.84} /><Stool position={[1.38, 0, facadeZ - 1.72]} color="#3c7770" scale={0.84} /><Cylinder args={[0.3, 0.32, 0.62, 10]} position={[-1.85, 0.42, facadeZ - 0.42]}><meshStandardMaterial color="#afb6a5" roughness={0.68} metalness={0.14} /></Cylinder><Cylinder args={[0.16, 0.18, 0.56, 10]} position={[-0.55, 0.48, facadeZ - 0.82]}><meshStandardMaterial color="#9da5a0" roughness={0.52} metalness={0.22} /></Cylinder>{[-1.62, -1.35, -1.08].map((x, index) => <AtlasTile key={x} src={ART.snacks} columns={3} width={0.32} height={0.25} position={[x, 0.98, facadeZ - 0.7]} column={index} row={0} />)}</group>
 }
 
-function SidewalkPedestrian({
-  x,
-  z,
-  direction,
-  bound,
-  index,
-}: {
-  x: number
-  z: number
-  direction: 1 | -1
-  bound: number
-  index: number
-}) {
+function HomeFront({ width, facadeZ, variant }: { width: number; depth: number; facadeZ: number; variant: number }) {
+  return <group><Box args={[width - 0.42, 2.4, 0.08]} position={[0, 1.32, facadeZ - 0.03]}><meshStandardMaterial color={variant % 2 ? '#4c5556' : '#3a5b60'} roughness={0.26} metalness={0.12} /></Box><Box args={[0.08, 2.5, 0.12]} position={[-width * 0.12, 1.35, facadeZ - 0.08]}><meshStandardMaterial color="#8d714f" roughness={0.82} /></Box><Box args={[0.08, 2.5, 0.12]} position={[width * 0.34, 1.35, facadeZ - 0.08]}><meshStandardMaterial color="#8d714f" roughness={0.82} /></Box><Box args={[0.74, 1.7, 0.1]} position={[width * 0.22, 1.2, facadeZ - 0.1]}><meshStandardMaterial color="#6c453b" roughness={0.8} /></Box><ImagePlane src={ART.wear} width={0.9} height={1.25} position={[-width * 0.3, 1.52, facadeZ - 0.095]} opacity={0.5} /></group>
+}
+
+function Business({ x, z, type, variant }: { x: number; z: number; type: BusinessType; variant: number }) {
+  const size = SIZES[type]
+  const facadeZ = -size.depth / 2 - 0.02
+  let contents: ReactNode
+  if (type === 'pho') contents = <group><Sign src={ART.pho} width={size.width - 0.35} height={1.7} y={size.height - 0.92} facadeZ={facadeZ} frame="#703c2d" /><PhoInterior width={size.width} depth={size.depth} facadeZ={facadeZ} /><Awning width={size.width - 0.6} facadeZ={facadeZ} colors={['#e8d9ad', '#ca4b39', '#e8d9ad']} /></group>
+  else if (type === 'barber') contents = <group><Sign src={ART.barber} width={size.width - 0.18} height={1.36} y={size.height - 0.8} facadeZ={facadeZ} frame="#11181c" /><BarberInterior width={size.width} depth={size.depth} facadeZ={facadeZ} /><Awning width={size.width - 0.12} facadeZ={facadeZ} /><Poster src={ART.services} width={0.48} height={1.44} position={[size.width / 2 + 0.1, 1.35, facadeZ - 0.13]} /><Bike x={-1.9} z={facadeZ - 0.85} color="#5f6870" scale={0.58} /><Bike x={1.78} z={facadeZ - 0.78} color="#ad4942" scale={0.55} flip /></group>
+  else if (type === 'repair') contents = <group><Sign src={ART.repair} width={size.width - 0.2} height={1.28} y={size.height - 0.78} facadeZ={facadeZ} frame="#213c4a" /><RepairInterior width={size.width} depth={size.depth} facadeZ={facadeZ} /></group>
+  else if (type === 'grocery') contents = <group><Sign src={ART.grocery} width={size.width - 0.2} height={1.25} y={size.height - 0.76} facadeZ={facadeZ} frame="#174e51" /><GroceryInterior width={size.width} depth={size.depth} facadeZ={facadeZ} /></group>
+  else if (type === 'home') contents = <HomeFront width={size.width} depth={size.depth} facadeZ={facadeZ} variant={variant} />
+  else contents = <group><Sign src={ART.tea} width={size.width - 0.38} height={0.85} y={size.height - 0.74} facadeZ={facadeZ} frame="#365b59" /><TeaStall width={size.width} depth={size.depth} facadeZ={facadeZ} /></group>
+  return <group position={[x, 0, z]} rotation={[0, z > 0 ? 0 : Math.PI, 0]}><Shell {...size} facadeZ={facadeZ} variant={variant} balcony={type === 'home' || variant % 4 === 0} />{contents}</group>
+}
+
+function Pole({ x, z, transformer = false, flag = false }: { x: number; z: number; transformer?: boolean; flag?: boolean }) {
+  return <group position={[x, 0, z]}><Cylinder args={[0.11, 0.16, 7.3, 6]} position={[0, 3.65, 0]} castShadow><meshStandardMaterial color="#4c514d" roughness={0.9} /></Cylinder><Box args={[1.8, 0.12, 0.12]} position={[0, 6.65, 0]}><meshStandardMaterial color="#4c514d" roughness={0.9} metalness={0.08} /></Box>{transformer && <Box args={[0.65, 0.62, 0.55]} position={[0.42, 5.72, 0.18]}><meshStandardMaterial color="#737b72" roughness={0.78} metalness={0.12} /></Box>}{flag && <group position={[0.05, 5.75, -0.18]}><Box args={[0.82, 0.48, 0.04]}><meshStandardMaterial color="#b8443e" roughness={0.84} /></Box></group>}</group>
+}
+
+function Tree({ x, z, scale, color }: { x: number; z: number; scale: number; color: string }) {
+  return <group position={[x, 0, z]} scale={scale}><Box args={[1.12, 0.035, 1.12]} position={[0, 0.32, 0]}><meshStandardMaterial color="#83735c" roughness={1} /></Box><Cylinder args={[0.18, 0.24, 2.4, 7]} position={[0, 1.2, 0]}><meshStandardMaterial color="#6f4e38" roughness={1} /></Cylinder><Icosahedron args={[1.18, 1]} position={[0, 3, 0]} castShadow><meshStandardMaterial color={color} roughness={1} flatShading /></Icosahedron><Icosahedron args={[0.7, 1]} position={[0.62, 3.35, 0.1]} castShadow><meshStandardMaterial color="#78a06d" roughness={1} flatShading /></Icosahedron></group>
+}
+
+function Lamp({ x, z }: { x: number; z: number }) {
+  return <group position={[x, 0, z]}><Cylinder args={[0.06, 0.09, 3.8, 6]} position={[0, 1.9, 0]} castShadow><meshStandardMaterial color="#55615c" roughness={0.82} /></Cylinder><Box args={[0.38, 0.13, 0.18]} position={[0, 3.82, -0.16]}><meshStandardMaterial color="#e7d38a" emissive="#5c4a19" emissiveIntensity={0.18} roughness={0.65} /></Box></group>
+}
+
+function Span({ start, end, z, y, sag, color }: { start: number; end: number; z: number; y: number; sag: number; color: string }) {
+  return <Line points={[[start, y, z], [(start + end) / 2, y - sag, z], [end, y, z]]} color={color} lineWidth={0.7} />
+}
+
+function Pedestrian({ x, z, direction, bound, index }: { x: number; z: number; direction: 1 | -1; bound: number; index: number }) {
   const group = useRef<THREE.Group>(null)
-  const leftLeg = useRef<THREE.Group>(null)
-  const rightLeg = useRef<THREE.Group>(null)
   const phase = useRef(index * 1.7)
-
-  useFrame((_, delta) => {
-    phase.current += delta * 6.5
-    const current = group.current
-    if (current) {
-      current.position.x += direction * delta * (0.32 + index * 0.035)
-      if (current.position.x > bound) current.position.x = -bound
-      if (current.position.x < -bound) current.position.x = bound
-    }
-    if (leftLeg.current) leftLeg.current.rotation.z = Math.sin(phase.current) * 0.32
-    if (rightLeg.current) rightLeg.current.rotation.z = Math.sin(phase.current + Math.PI) * 0.32
-  })
-
-  return (
-    <group ref={group} position={[x, 0, z]} rotation={[0, direction === 1 ? 0 : Math.PI, 0]}>
-      <Box args={[0.28, 0.58, 0.22]} position={[0, 1.02, 0]}>
-        <meshStandardMaterial color={index % 2 === 0 ? '#536d68' : '#a05c48'} roughness={0.9} />
-      </Box>
-      <Icosahedron args={[0.17, 1]} position={[0, 1.48, 0]}>
-        <meshStandardMaterial color="#b88462" roughness={0.96} flatShading />
-      </Icosahedron>
-      <group ref={leftLeg} position={[-0.09, 0.76, 0]}>
-        <Box args={[0.09, 0.54, 0.09]} position={[0, -0.27, 0]}>
-          <meshStandardMaterial color="#303b3d" roughness={0.92} />
-        </Box>
-      </group>
-      <group ref={rightLeg} position={[0.09, 0.76, 0]}>
-        <Box args={[0.09, 0.54, 0.09]} position={[0, -0.27, 0]}>
-          <meshStandardMaterial color="#303b3d" roughness={0.92} />
-        </Box>
-      </group>
-      {[-1, 1].map((side) => (
-        <Box key={side} args={[0.07, 0.42, 0.07]} position={[side * 0.2, 0.98, 0]} rotation={[0, 0, side * -0.25]}>
-          <meshStandardMaterial color="#536d68" roughness={0.9} />
-        </Box>
-      ))}
-    </group>
-  )
+  useFrame((_, delta) => { phase.current += delta * 6; if (!group.current) return; group.current.position.x += direction * delta * 0.35; if (group.current.position.x > bound) group.current.position.x = -bound; if (group.current.position.x < -bound) group.current.position.x = bound })
+  return <group ref={group} position={[x, 0, z]} rotation={[0, direction === 1 ? 0 : Math.PI, 0]}><Box args={[0.28, 0.58, 0.22]} position={[0, 1.02, 0]}><meshStandardMaterial color={index % 2 ? '#a05c48' : '#536d68'} roughness={0.9} /></Box><Icosahedron args={[0.17, 1]} position={[0, 1.48, 0]}><meshStandardMaterial color="#b88462" roughness={0.96} flatShading /></Icosahedron><Box args={[0.09, 0.54, 0.09]} position={[-0.09, 0.5, 0]}><meshStandardMaterial color="#303b3d" roughness={0.92} /></Box><Box args={[0.09, 0.54, 0.09]} position={[0.09, 0.5, 0]}><meshStandardMaterial color="#303b3d" roughness={0.92} /></Box></group>
 }
 
-function DistantBackdrop({ backdropZ, roadLength }: { backdropZ: number; roadLength: number }) {
-  const halfLength = roadLength / 2
-  const north = Array.from({ length: Math.ceil(roadLength / 6.2) }, (_, index) => -halfLength + 2.7 + index * ((roadLength - 5.4) / Math.max(1, Math.ceil(roadLength / 6.2) - 1)))
-  const south = Array.from({ length: Math.ceil(roadLength / 6.8) }, (_, index) => -halfLength + 3.4 + index * ((roadLength - 6.8) / Math.max(1, Math.ceil(roadLength / 6.8) - 1)))
-  return (
-    <group>
-      {north.map((x, index) => (
-        <Box key={`north-backdrop-${x}`} args={[4.8 + (index % 4) * 0.7, 5.2 + (index % 3), 2]} position={[x, 2.6 + (index % 3) * 0.5, backdropZ]}>
-          <meshStandardMaterial color={['#9ca9a4', '#a9b2aa', '#8e9e9a'][index % 3]} roughness={1} />
-        </Box>
-      ))}
-      {south.map((x, index) => (
-        <Box key={`south-backdrop-${x}`} args={[5.2 + (index % 3) * 0.8, 4.4 + (index % 2), 2]} position={[x, 2.2 + (index % 2) * 0.4, -backdropZ]}>
-          <meshStandardMaterial color={['#a5aaa0', '#9ba9a4', '#adb0a1'][index % 3]} roughness={1} />
-        </Box>
-      ))}
-    </group>
-  )
+function Backdrop({ z, length }: { z: number; length: number }) {
+  return <group>{Array.from({ length: 9 }, (_, index) => <Box key={index} args={[5.4, 5.5 + (index % 3), 2]} position={[-length / 2 + 2.5 + index * ((length - 5) / 8), 2.75 + (index % 3) * 0.5, z]}><meshStandardMaterial color={['#9ca9a4', '#a9b2aa', '#8e9e9a'][index % 3]} roughness={1} /></Box>)}</group>
+}
+
+function plan(types: BusinessType[], length: number) {
+  const total = types.reduce((sum, type) => sum + SIZES[type].width, 0)
+  let cursor = -Math.min(total, length - 2) / 2
+  return types.map((type, index) => { const width = SIZES[type].width; const x = cursor + width / 2; cursor += width; return { type, x, index } })
 }
 
 export function Environment({ level }: { level: LevelConfig }) {
-  const shopPalette = [
-    ['#aa8068', '#63534a', '#cf493d'],
-    ['#78918b', '#4e5e5d', '#d3ad3d'],
-    ['#b49b6c', '#6b594a', '#3f7a78'],
-    ['#9a877f', '#5a5651', '#3a6490'],
-  ]
   const shopZ = level.roadHalfWidth + level.sidewalkWidth + 1.7
   const streetZ = level.roadHalfWidth + level.sidewalkWidth - 0.7
-  const scooterZ = level.roadHalfWidth + level.sidewalkWidth + 0.1
-  const frontageCount = Math.max(13, Math.ceil(level.roadLength / 6.4))
-  const frontageInset = Math.min(4.2, level.roadLength * 0.08)
-  const shopXs = Array.from({ length: frontageCount }, (_, index) => (
-    -level.roadLength / 2 + frontageInset + index * ((level.roadLength - frontageInset * 2) / Math.max(1, frontageCount - 1))
-  ))
-  const heightBias = level.environmentPreset === 'smallStreet' ? -0.35 : level.environmentPreset === 'arterial' ? 0.45 : 0.35
-  const extraScooters = level.environmentPreset === 'smallStreet' || level.environmentPreset === 'motorcycle'
-  const northLabels = ['TẠP HÓA', 'PHỞ BÒ', 'SỬA XE MÁY', 'CÀ PHÊ', 'CƠM BÌNH DÂN', 'CẮT TÓC', 'BÚN CHẢ', 'TRÀ ĐÁ', 'BÁNH MÌ', 'CƠM GÀ', 'TẠP HÓA', 'NƯỚC MÍA', 'BÚN BÒ', 'CÀ PHÊ']
-  const southLabels = ['BÚN CHẢ', 'TRÀ ĐÁ', 'RỬA XE', 'PHỞ GÀ', 'BÁNH MÌ', 'CÀ PHÊ', 'PHỞ BÒ', 'TẠP HÓA', 'CƠM BÌNH DÂN', 'CẮT TÓC', 'SỬA XE MÁY', 'CƠM GÀ', 'TRÀ ĐÁ', 'TẠP HÓA']
-  const poleXs = Array.from({ length: 7 }, (_, index) => -level.roadLength / 2 + 5 + index * ((level.roadLength - 10) / 6))
-  const cableProfiles = [
-    { baseY: 6.65, sag: 0.24, zOffset: 0.16, color: '#3e4d4b', lineWidth: 1 },
-    { baseY: 6.35, sag: 0.2, zOffset: 0.25, color: '#5a6560', lineWidth: 0.8 },
-    { baseY: 6.08, sag: 0.18, zOffset: -0.25, color: '#616b65', lineWidth: 0.65 },
-  ]
-
-  return (
-    <group>
-      <DistantBackdrop backdropZ={shopZ + 3.6} roadLength={level.roadLength} />
-      {shopXs.map((x, index) => {
-        const palette = shopPalette[index % shopPalette.length]
-        const southPalette = shopPalette[(index + 2) % shopPalette.length]
-        return (
-          <group key={`shops-${x}`}>
-            {Math.abs(x) > 5.55 && (
-              <ShopHouse
-                x={x}
-                z={shopZ}
-                bodyColor={palette[0]}
-                roofColor={palette[1]}
-                signColor={palette[2]}
-                label={northLabels[index % northLabels.length]}
-                heightBias={heightBias + (index % 3 === 0 ? 0.24 : 0)}
-                hasBalcony={index % 5 === 0 || index % 5 === 3}
-              />
-            )}
-            {index !== 2 && index !== 5 && (
-              <ShopHouse
-                x={x + 0.35}
-                z={-shopZ}
-                bodyColor={southPalette[0]}
-                roofColor={southPalette[1]}
-                signColor={southPalette[2]}
-                label={southLabels[index % southLabels.length]}
-                heightBias={index === 1 ? -0.45 : heightBias * 0.5 + (index % 4 === 2 ? 0.3 : 0)}
-                hasBalcony={index % 4 === 1 || index % 4 === 0}
-              />
-            )}
-          </group>
-        )
-      })}
-      <HeroPhoRestaurant x={0} z={shopZ} />
-
-      {poleXs.map((x, index) => (
-        <group key={`poles-${x}`}>
-          <UtilityPole x={x} z={streetZ} transformer={index === 1} flag={index === 0} />
-          <UtilityPole x={x + 1.2} z={-streetZ} transformer={index === 3} flag={index === 4} />
-        </group>
-      ))}
-      {[-1, 1].map((side) => cableProfiles.map((profile, profileIndex) => (
-        poleXs.slice(0, -1).map((x, spanIndex) => (
-          <CableSpan
-            key={`cable-${side}-${profileIndex}-${spanIndex}`}
-            xStart={x}
-            xEnd={poleXs[spanIndex + 1]}
-            z={side * (streetZ + profile.zOffset)}
-            baseY={profile.baseY}
-            sag={profile.sag}
-            zOffset={side * 0.08}
-            color={profile.color}
-            lineWidth={profile.lineWidth}
-          />
-        ))
-      )))}
-      {shopXs.filter((_, index) => index % 2 === 0).map((x) => (
-        <Line key={`service-drop-${x}`} points={[[x, 6.5, streetZ], [x + 0.24, 4.3, streetZ + 0.35], [x + 0.1, 3.35, streetZ + 1.25]]} color="#59645f" lineWidth={0.5} />
-      ))}
-
-      {[
-        [-0.44 * level.roadLength, streetZ - 0.4, 1.08, '#5d8760'],
-        [-0.3 * level.roadLength, -streetZ - 0.5, 0.86, '#4e7857'],
-        [-0.12 * level.roadLength, streetZ - 0.34, 1.18, '#6c8d5f'],
-        [0.08 * level.roadLength, -streetZ - 0.42, 0.94, '#557d5b'],
-        [0.25 * level.roadLength, streetZ - 0.36, 1.04, '#668961'],
-        [0.41 * level.roadLength, -streetZ - 0.34, 0.9, '#4e7857'],
-      ].map(([x, z, scale, canopyColor], index) => (
-        <group key={`street-${x}`}>
-          <StreetTree x={x as number} z={z as number} scale={scale as number} canopyColor={canopyColor as string} />
-          {index !== 1 && <StreetLamp x={(x as number) + 1.25} z={(z as number) - 0.05} />}
-        </group>
-      ))}
-      {(extraScooters
-        ? [-0.43, -0.29, -0.13, 0.05, 0.23, 0.4].map((ratio) => ratio * level.roadLength)
-        : [-0.37, -0.12, 0.14, 0.39].map((ratio) => ratio * level.roadLength)
-      ).map((x, index) => (
-        <ParkedUnderbone key={`underbone-north-${x}`} x={x} z={scooterZ} color={['#6b7470', '#2d5f69', '#74383b', '#536d68', '#c7c9c2', '#29383d'][index % 6]} />
-      ))}
-      {(extraScooters
-        ? [-0.38, -0.2, -0.02, 0.16, 0.34].map((ratio) => ratio * level.roadLength)
-        : [-0.32, -0.08, 0.18, 0.4].map((ratio) => ratio * level.roadLength)
-      ).map((x, index) => (
-        <ParkedUnderbone key={`underbone-south-${x}`} x={x} z={-scooterZ} color={['#68746e', '#315d69', '#74383b', '#4b5960', '#c7c9c2'][index % 5]} flip />
-      ))}
-      <SidewalkPedestrian
-        x={-level.roadLength * 0.28}
-        z={level.roadHalfWidth + level.sidewalkWidth * 0.54}
-        direction={1}
-        bound={level.roadLength / 2 - 1.5}
-        index={0}
-      />
-      <SidewalkPedestrian
-        x={level.roadLength * 0.22}
-        z={-(level.roadHalfWidth + level.sidewalkWidth * 0.54)}
-        direction={-1}
-        bound={level.roadLength / 2 - 1.5}
-        index={1}
-      />
-      {level.environmentPreset !== 'smallStreet' && (
-        <>
-          <SidewalkPedestrian
-            x={level.roadLength * 0.42}
-            z={level.roadHalfWidth + level.sidewalkWidth * 0.48}
-            direction={-1}
-            bound={level.roadLength / 2 - 1.5}
-            index={2}
-          />
-          <SidewalkPedestrian
-            x={-level.roadLength * 0.46}
-            z={-(level.roadHalfWidth + level.sidewalkWidth * 0.48)}
-            direction={1}
-            bound={level.roadLength / 2 - 1.5}
-            index={3}
-          />
-        </>
-      )}
-    </group>
-  )
+  const scootersZ = level.roadHalfWidth + level.sidewalkWidth + 0.1
+  const north = plan(['tea', 'home', 'barber', 'pho', 'grocery', 'home', 'repair', 'cafe', 'home', 'tea'], level.roadLength)
+  const south = plan(['home', 'grocery', 'tea', 'repair', 'barber', 'pho', 'home', 'cafe', 'grocery', 'tea'], level.roadLength)
+  const poleXs = [-0.44, -0.22, 0, 0.22, 0.44].map((ratio) => ratio * level.roadLength)
+  const scooterColors = ['#6b7470', '#2d5f69', '#74383b', '#536d68', '#c7c9c2', '#29383d']
+  return <group><Backdrop z={shopZ + 3.8} length={level.roadLength} />{north.map(({ type, x, index }) => <Business key={`north-${type}-${x}`} x={x} z={shopZ} type={type} variant={index} />)}{south.map(({ type, x, index }) => <Business key={`south-${type}-${x}`} x={x} z={-shopZ} type={type} variant={index + 2} />)}{poleXs.map((x, index) => <group key={x}><Pole x={x} z={streetZ} transformer={index === 1} flag={index === 0} /><Pole x={x + 1.2} z={-streetZ} transformer={index === 3} flag={index === 4} /></group>)}{poleXs.slice(0, -1).map((x, index) => <group key={`span-${x}`}><Span start={x} end={poleXs[index + 1]} z={streetZ} y={6.6} sag={0.24} color="#3e4d4b" /><Span start={x} end={poleXs[index + 1]} z={-streetZ} y={6.35} sag={0.2} color="#5a6560" /></group>)}{[-0.4, -0.2, 0.02, 0.24, 0.41].map((ratio, index) => <group key={ratio}><Tree x={ratio * level.roadLength} z={(index % 2 ? -1 : 1) * (streetZ - 0.38)} scale={[1.08, 0.86, 1.18, 0.94, 1.04][index]} color={['#5d8760', '#4e7857', '#6c8d5f', '#557d5b', '#668961'][index]} />{index !== 1 && <Lamp x={ratio * level.roadLength + 1.25} z={(index % 2 ? -1 : 1) * (streetZ - 0.42)} />}</group>)}{[-0.37, -0.12, 0.14, 0.39].map((ratio, index) => <Bike key={`bike-n-${ratio}`} x={ratio * level.roadLength} z={scootersZ} color={scooterColors[index]} />)}{[-0.32, -0.08, 0.18, 0.4].map((ratio, index) => <Bike key={`bike-s-${ratio}`} x={ratio * level.roadLength} z={-scootersZ} color={scooterColors[index + 2]} flip />)}<Pedestrian x={-level.roadLength * 0.28} z={level.roadHalfWidth + level.sidewalkWidth * 0.54} direction={1} bound={level.roadLength / 2 - 1.5} index={0} /><Pedestrian x={level.roadLength * 0.22} z={-(level.roadHalfWidth + level.sidewalkWidth * 0.54)} direction={-1} bound={level.roadLength / 2 - 1.5} index={1} />{level.environmentPreset !== 'smallStreet' && <><Pedestrian x={level.roadLength * 0.42} z={level.roadHalfWidth + level.sidewalkWidth * 0.48} direction={-1} bound={level.roadLength / 2 - 1.5} index={2} /><Pedestrian x={-level.roadLength * 0.46} z={-(level.roadHalfWidth + level.sidewalkWidth * 0.48)} direction={1} bound={level.roadLength / 2 - 1.5} index={3} /></>}</group>
 }

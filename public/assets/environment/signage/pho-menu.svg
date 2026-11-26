@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="520" viewBox="0 0 720 520">
+  <rect width="720" height="520" rx="14" fill="#f5e7bc"/><rect x="18" y="18" width="684" height="484" rx="10" fill="none" stroke="#b33b2d" stroke-width="8"/>
+  <text x="360" y="76" text-anchor="middle" fill="#b33b2d" font-family="Arial,sans-serif" font-size="48" font-weight="900">MINH TÂM</text>
+  <g fill="#234f63" font-family="Arial,sans-serif" font-size="32" font-weight="800"><text x="62" y="150">PHỞ BÒ</text><text x="560" y="150">55K</text><text x="62" y="214">BÚN BÒ</text><text x="560" y="214">50K</text><text x="62" y="278">CƠM SƯỜN</text><text x="560" y="278">52K</text><text x="62" y="342">TRÀ ĐÁ</text><text x="560" y="342">5K</text></g>
+  <path d="M80 404C170 350 265 472 360 404S550 350 640 404" fill="none" stroke="#e0a537" stroke-width="22"/><circle cx="136" cy="418" r="30" fill="#e35d3d"/><circle cx="584" cy="418" r="30" fill="#4e8a6a"/>
+</svg>

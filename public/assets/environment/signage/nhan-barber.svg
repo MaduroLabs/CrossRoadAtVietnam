@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360">
+  <defs><pattern id="scrim" width="16" height="16" patternUnits="userSpaceOnUse"><path d="M0 0L16 16M-4 12L4 20M12-4L20 4" stroke="#ffffff" stroke-opacity=".06" stroke-width="3"/></pattern></defs>
+  <rect width="1200" height="360" rx="12" fill="#141b22"/><rect width="1200" height="360" rx="12" fill="url(#scrim)"/>
+  <rect x="24" y="24" width="1152" height="312" fill="none" stroke="#c1a346" stroke-width="7"/>
+  <circle cx="110" cy="178" r="68" fill="#c1a346"/><path d="M110 112L126 160H176L136 190L151 240L110 211L69 240L84 190L44 160H94Z" fill="#141b22"/>
+  <text x="682" y="205" text-anchor="middle" fill="#e8ca62" font-family="Arial,sans-serif" font-size="104" font-weight="900" letter-spacing="5">NHÀN</text>
+  <text x="682" y="286" text-anchor="middle" fill="#f4f0dc" font-family="Arial,sans-serif" font-size="58" font-weight="800" letter-spacing="13">BARBER</text>
+  <text x="1090" y="80" text-anchor="middle" fill="#e8ca62" font-family="Arial,sans-serif" font-size="25" font-weight="800" letter-spacing="3">CẮT TÓC NAM</text>
+</svg>

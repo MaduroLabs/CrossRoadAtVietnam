@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="420" viewBox="0 0 1600 420">
+  <defs>
+    <linearGradient id="gold" x2="0" y2="1"><stop stop-color="#ffe56d"/><stop offset="1" stop-color="#e8a92d"/></linearGradient>
+    <pattern id="grain" width="22" height="22" patternUnits="userSpaceOnUse"><path d="M0 18L22 4M-5 7L7-5M15 27L27 15" stroke="#b97824" stroke-opacity=".12" stroke-width="3"/></pattern>
+  </defs>
+  <rect width="1600" height="420" rx="18" fill="url(#gold)"/>
+  <rect width="1600" height="420" rx="18" fill="url(#grain)"/>
+  <rect x="28" y="24" width="1544" height="372" rx="12" fill="none" stroke="#b13b27" stroke-width="12"/>
+  <text x="90" y="118" fill="#194f8c" font-family="Arial,sans-serif" font-size="54" font-weight="800" letter-spacing="8">QUÁN ĂN GIA ĐÌNH</text>
+  <text x="800" y="270" text-anchor="middle" fill="#b52327" stroke="#fff0a6" stroke-width="8" paint-order="stroke" font-family="Arial,sans-serif" font-size="174" font-weight="900" letter-spacing="10">PHỞ</text>
+  <text x="1040" y="118" fill="#194f8c" font-family="Arial,sans-serif" font-size="43" font-weight="700">BÚN BÒ · CƠM</text>
+  <text x="800" y="350" text-anchor="middle" fill="#174b78" font-family="Arial,sans-serif" font-size="40" font-weight="800" letter-spacing="5">MINH TÂM  •  NƯỚC DÙNG NINH XƯƠNG MỖI NGÀY</text>
+  <circle cx="120" cy="292" r="34" fill="#d8352c"/><circle cx="1480" cy="292" r="34" fill="#d8352c"/>
+</svg>

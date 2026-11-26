@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="720" viewBox="0 0 240 720">
+  <rect width="240" height="720" rx="10" fill="#172027"/><rect x="14" y="14" width="212" height="692" fill="none" stroke="#d7b84d" stroke-width="6"/>
+  <text x="120" y="92" text-anchor="middle" fill="#efcf61" font-family="Arial,sans-serif" font-size="40" font-weight="900">DỊCH VỤ</text>
+  <g fill="#f6f0d8" font-family="Arial,sans-serif" font-size="30" font-weight="800" text-anchor="middle"><text x="120" y="190">CẮT TÓC</text><text x="120" y="290">UỐN TÓC</text><text x="120" y="390">NHUỘM TÓC</text><text x="120" y="490">TẠO KIỂU</text><text x="120" y="590">GỘI ĐẦU</text></g>
+  <g fill="#d5543b"><circle cx="45" cy="176" r="12"/><circle cx="45" cy="276" r="12"/><circle cx="45" cy="376" r="12"/><circle cx="45" cy="476" r="12"/><circle cx="45" cy="576" r="12"/></g>
+</svg>

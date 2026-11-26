@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="300" viewBox="0 0 720 300">
+  <rect width="720" height="300" rx="18" fill="#2f6b63"/><rect x="18" y="18" width="684" height="264" rx="12" fill="none" stroke="#f2c955" stroke-width="8"/>
+  <text x="360" y="132" text-anchor="middle" fill="#fff3bd" font-family="Arial,sans-serif" font-size="72" font-weight="900">TRÀ ĐÁ</text>
+  <text x="360" y="204" text-anchor="middle" fill="#f7d45e" font-family="Arial,sans-serif" font-size="38" font-weight="800" letter-spacing="4">VỈA HÈ</text>
+  <path d="M104 242H616" stroke="#dc6541" stroke-width="12"/><circle cx="115" cy="76" r="24" fill="#dc6541"/><circle cx="605" cy="76" r="24" fill="#dc6541"/>
+</svg>
