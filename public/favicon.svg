@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Cross Roads in Vietnam</title>
+  <desc id="desc">A low-poly scooter and pedestrian crossing a Vietnamese street.</desc>
+  <rect width="64" height="64" rx="12" fill="#cadadd"/>
+  <path d="M-8 30 56 13l19 24-64 17Z" fill="#3b4648"/>
+  <path d="m-5 52 64-17 5 6-64 17Z" fill="#f1cf5a"/>
+  <path d="M7 44 71 27l2 3L9 47Z" fill="#b9d1b0"/>
+  <g fill="#d8dddd" transform="rotate(-15 32 35)">
+    <path d="M16 28h22v3H16z"/>
+    <path d="M16 34h22v3H16z"/>
+    <path d="M16 40h22v3H16z"/>
+    <path d="M16 46h22v3H16z"/>
+  </g>
+  <g stroke="#202729" stroke-width="2.7" fill="none">
+    <circle cx="20" cy="39" r="4.5"/>
+    <circle cx="33" cy="35.5" r="4.5"/>
+  </g>
+  <path d="m18 35 8-3 7 2-3 3-8 2Z" fill="#315d69"/>
+  <path d="m24 31 6-3 4 2-1 3Z" fill="#1b2527"/>
+  <path d="m33 31 4-5 2 1-2 6Z" fill="#9fa7a0"/>
+  <g fill="#303b3d">
+    <path d="m31 29 2 6-2 5-2-1 1-5-2-4Z"/>
+    <path d="m28 38 2 1-2 6-2-1Z"/>
+    <path d="m32 38 2 1-1 6-2-1Z"/>
+  </g>
+  <circle cx="31" cy="25" r="3.2" fill="#b88462"/>
+  <path d="m28 24 3-3 4 2-1 3Z" fill="#253236"/>
+</svg>

@@ -23,6 +23,87 @@ body {
   min-width: 320px;
 }
 
+.branding-page {
+  width: 100%;
+  min-height: 100%;
+  overflow: auto;
+  padding: 2rem;
+  background: #cadadd;
+  color: #142226;
+}
+
+.branding-card {
+  width: min(100%, 980px);
+  margin: 0 auto;
+  padding: clamp(1rem, 3vw, 2rem);
+  border: 1px solid rgba(20, 34, 38, 0.12);
+  border-radius: 1.6rem;
+  background: rgba(246, 243, 233, 0.7);
+  box-shadow: 0 1.2rem 3rem rgba(35, 52, 48, 0.12);
+}
+
+.branding-heading {
+  display: grid;
+  gap: 0.55rem;
+  margin-bottom: 1rem;
+}
+
+.branding-heading h1 {
+  font-size: clamp(2rem, 5vw, 4rem);
+}
+
+.branding-heading p:last-child {
+  max-width: 44rem;
+  margin: 0;
+  color: #395154;
+}
+
+.branding-stage {
+  width: min(100%, 760px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 1.1rem;
+  background: #cadadd;
+}
+
+.branding-stage canvas {
+  display: block;
+}
+
+.branding-toolbar {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1rem;
+  color: #395154;
+  font-size: 0.85rem;
+}
+
+.branding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.branding-actions button {
+  padding: 0.55rem 0.85rem;
+  border-radius: 0.65rem;
+  font-size: 0.78rem;
+}
+
+.branding-download-link {
+  width: fit-content;
+  color: #2f5554;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.branding-export-preview {
+  width: 1px;
+  height: 1px;
+  opacity: 0.01;
+}
+
 button {
   border: 0;
   border-radius: 999px;

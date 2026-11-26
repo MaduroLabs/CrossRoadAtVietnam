@@ -190,11 +190,11 @@ function Span({ start, end, z, y, sag, color }: { start: number; end: number; z:
   return <Line points={[[start, y, z], [(start + end) / 2, y - sag, z], [end, y, z]]} color={color} lineWidth={0.7} />
 }
 
-function Pedestrian({ x, z, direction, bound, index }: { x: number; z: number; direction: 1 | -1; bound: number; index: number }) {
+export function Pedestrian({ x, z, direction, bound, index, static: isStatic = false, scale = 1 }: { x: number; z: number; direction: 1 | -1; bound: number; index: number; static?: boolean; scale?: number }) {
   const group = useRef<THREE.Group>(null)
   const phase = useRef(index * 1.7)
-  useFrame((_, delta) => { phase.current += delta * 6; if (!group.current) return; group.current.position.x += direction * delta * 0.35; if (group.current.position.x > bound) group.current.position.x = -bound; if (group.current.position.x < -bound) group.current.position.x = bound })
-  return <group ref={group} position={[x, 0, z]} rotation={[0, direction === 1 ? 0 : Math.PI, 0]}><Box args={[0.28, 0.58, 0.22]} position={[0, 1.02, 0]}><meshStandardMaterial color={index % 2 ? '#a05c48' : '#536d68'} roughness={0.9} /></Box><Icosahedron args={[0.17, 1]} position={[0, 1.48, 0]}><meshStandardMaterial color="#b88462" roughness={0.96} flatShading /></Icosahedron><Box args={[0.09, 0.54, 0.09]} position={[-0.09, 0.5, 0]}><meshStandardMaterial color="#303b3d" roughness={0.92} /></Box><Box args={[0.09, 0.54, 0.09]} position={[0.09, 0.5, 0]}><meshStandardMaterial color="#303b3d" roughness={0.92} /></Box></group>
+  useFrame((_, delta) => { if (isStatic) return; phase.current += delta * 6; if (!group.current) return; group.current.position.x += direction * delta * 0.35; if (group.current.position.x > bound) group.current.position.x = -bound; if (group.current.position.x < -bound) group.current.position.x = bound })
+  return <group ref={group} position={[x, 0, z]} rotation={[0, direction === 1 ? 0 : Math.PI, 0]} scale={scale}><Box args={[0.28, 0.58, 0.22]} position={[0, 1.02, 0]}><meshStandardMaterial color={index % 2 ? '#a05c48' : '#536d68'} roughness={0.9} /></Box><Icosahedron args={[0.17, 1]} position={[0, 1.48, 0]}><meshStandardMaterial color="#b88462" roughness={0.96} flatShading /></Icosahedron><Box args={[0.09, 0.54, 0.09]} position={[-0.09, 0.5, 0]}><meshStandardMaterial color="#303b3d" roughness={0.92} /></Box><Box args={[0.09, 0.54, 0.09]} position={[0.09, 0.5, 0]}><meshStandardMaterial color="#303b3d" roughness={0.92} /></Box></group>
 }
 
 function Backdrop({ z, length }: { z: number; length: number }) {
